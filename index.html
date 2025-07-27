@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+  <head> </head>
+  <body>
+    <div id="root"></div>
+  </body>
+  <script>
+    function snakeCase(str) {
+      return str
+        .split("")
+        .flatMap((char, i) =>
+          /[A-Z]/.test(char) && i !== 0 ? ["-", char] : char
+        )
+        .join("")
+        .toLowerCase();
+    }
+
+    function getUnreplacedNames(template) {
+      return [
+        ...new Set(
+          [...template.matchAll(/<\/([A-Z].*?)>/g)].map(
+            ([_, componentName]) => componentName
+          )
+        ),
+      ];
+    }
+
+    function launch(app) {
+      let html = app();
+      let componentNames = getUnreplacedNames(html);
+
+      const rootEl = document.getElementById("root");
+      const components = {};
+
+      while (componentNames.length) {
+        componentNames.forEach((componentName) => {
+          if (!components[componentName]) {
+            const Component = class extends HTMLElement {
+              connectedCallback() {
+                console.log(`[${componentName}] connected...`);
+              }
+            };
+
+            customElements.define(snakeCase(componentName), Component);
+            components[componentName] = {
+              component: Component,
+              registered: true,
+            };
+          }
+
+          html = html
+            .replaceAll(componentName, snakeCase(componentName))
+            .split(`</${snakeCase(componentName)}>`)
+            .join(`${window[componentName]()}</${snakeCase(componentName)}>`);
+        });
+
+        componentNames = getUnreplacedNames(html);
+      }
+
+      rootEl.innerHTML = html;
+    }
+
+    function MyButton() {
+      return `<button>press me</button>`;
+    }
+
+    function HelloWorld() {
+      return `
+        <div>hello world</div>
+        <MyButton></MyButton>
+      `;
+    }
+
+    function App() {
+      return `
+        <div>greetings:</div>
+        <HelloWorld></HelloWorld>
+        <HelloWorld></HelloWorld>
+      `;
+    }
+
+    launch(App);
+  </script>
+</html>
