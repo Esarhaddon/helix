@@ -25,6 +25,33 @@
       ];
     }
 
+    function getId(prefix) {
+      return `${prefix ? prefix + "_" : ""}${Math.random()
+        .toFixed(7)
+        .slice(2)}`;
+    }
+
+    const eventTarget = new EventTarget();
+    const newSignals = [];
+
+    function signal(initialValue) {
+      const id = getId("signal");
+      newSignals.push(id);
+
+      return new Proxy(
+        { initialValue },
+        {
+          set(target, prop, value) {
+            if (prop === "value") {
+              eventTarget.dispatchEvent(new CustomEvent(id));
+            }
+
+            target[prop] = value;
+          },
+        }
+      );
+    }
+
     function launch(app) {
       let html = app();
       let componentNames = getUnreplacedNames(html);
