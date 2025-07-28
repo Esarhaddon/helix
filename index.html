@@ -5,6 +5,12 @@
     <div id="root"></div>
   </body>
   <script>
+    const eventTarget = new EventTarget();
+    const components = {};
+    const instances = {};
+    const newSignals = [];
+    const currentInstanceSignals = [];
+
     function snakeCase(str) {
       return str
         .split("")
@@ -25,66 +31,69 @@
       ];
     }
 
-    function getId(prefix) {
-      return `${prefix ? prefix + "_" : ""}${Math.random()
-        .toFixed(7)
-        .slice(2)}`;
-    }
+    const counts = {};
+    const unPrefixed = Symbol();
 
-    const eventTarget = new EventTarget();
-    const newSignals = [];
+    function getId(prefix) {
+      const key = prefix || unPrefixed;
+      counts[key] ||= 0;
+
+      return (prefix ? prefix + "_" : "") + ++counts[key];
+    }
 
     function signal(initialValue) {
-      const id = getId("signal");
-      newSignals.push(id);
+      let signal = currentInstanceSignals.pop();
 
-      return new Proxy(
-        { initialValue },
-        {
-          set(target, prop, value) {
-            if (prop === "value") {
-              eventTarget.dispatchEvent(new CustomEvent(id));
+      if (!signal) {
+        signal = {
+          id: getId(),
+          proxy: new Proxy(
+            { initialValue },
+            {
+              set(target, prop, value) {
+                if (prop === "value") {
+                  eventTarget.dispatchEvent(new CustomEvent(id, { value }));
+                }
+
+                target[prop] = value;
+              },
             }
+          ),
+        };
 
-            target[prop] = value;
-          },
-        }
-      );
-    }
-
-    function launch(app) {
-      let html = app();
-      let componentNames = getUnreplacedNames(html);
-
-      const rootEl = document.getElementById("root");
-      const components = {};
-
-      while (componentNames.length) {
-        componentNames.forEach((componentName) => {
-          if (!components[componentName]) {
-            const Component = class extends HTMLElement {
-              connectedCallback() {
-                console.log(`[${componentName}] connected...`);
-              }
-            };
-
-            customElements.define(snakeCase(componentName), Component);
-            components[componentName] = {
-              component: Component,
-              registered: true,
-            };
-          }
-
-          html = html
-            .replaceAll(componentName, snakeCase(componentName))
-            .split(`</${snakeCase(componentName)}>`)
-            .join(`${window[componentName]()}</${snakeCase(componentName)}>`);
-        });
-
-        componentNames = getUnreplacedNames(html);
+        newSignals.push(signal);
       }
 
-      rootEl.innerHTML = html;
+      return signal.proxy;
+    }
+
+    function render(component, destination) {
+      let html = component();
+      const componentNames = getUnreplacedNames(html);
+
+      componentNames.forEach((componentName) => {
+        if (!components[componentName]) {
+          const Component = class extends HTMLElement {
+            connectedCallback() {
+              const key = this.getAttribute("key") || getId("fwc");
+              this.setAttribute("key", key);
+
+              console.log(`[${componentName}.${key}] connected, rendering...`);
+              render(window[componentName], this);
+            }
+          };
+
+          customElements.define(snakeCase(componentName), Component);
+          components[componentName] = {
+            component: Component,
+            defined: true,
+          };
+        }
+
+        html = html.replaceAll(componentName, snakeCase(componentName));
+      });
+
+      destination.innerHTML = html;
     }
 
     function MyButton() {
@@ -101,11 +110,11 @@
     function App() {
       return `
         <div>greetings:</div>
-        <HelloWorld></HelloWorld>
+        <HelloWorld key="key-override"></HelloWorld>
         <HelloWorld></HelloWorld>
       `;
     }
 
-    launch(App);
+    render(App, document.getElementById("root"));
   </script>
 </html>
