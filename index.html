@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-  <head> </head>
+  <head></head>
   <body>
     <div id="root"></div>
   </body>
@@ -8,8 +8,6 @@
     const eventTarget = new EventTarget();
     const components = {};
     const instances = {};
-    const newSignals = [];
-    const currentInstanceSignals = [];
 
     function snakeCase(str) {
       return str
@@ -41,21 +39,41 @@
       return (prefix ? prefix + "_" : "") + ++counts[key];
     }
 
+    let newSignals = [];
+    let currentInstanceSignals = [];
+
+    // Rules of hooks apply
     function signal(initialValue) {
-      let signal = currentInstanceSignals.pop();
+      let signal = currentInstanceSignals.shift();
 
       if (!signal) {
-        signal = {
-          id: getId(),
-          proxy: new Proxy(
-            { initialValue },
-            {
-              set(target, prop, value) {
-                if (prop === "value") {
-                  eventTarget.dispatchEvent(new CustomEvent(id, { value }));
-                }
+        const id = getId("signal");
 
+        signal = {
+          id,
+          proxy: new Proxy(
+            { value: initialValue },
+            {
+              get(target, prop) {
+                if (prop === "id") {
+                  return id;
+                }
+                return target[prop];
+              },
+
+              set(target, prop, value) {
                 target[prop] = value;
+
+                if (prop === "value") {
+                  eventTarget.dispatchEvent(
+                    new CustomEvent("signalUpdate", {
+                      detail: {
+                        id,
+                        value,
+                      },
+                    })
+                  );
+                }
               },
             }
           ),
@@ -74,13 +92,39 @@
       componentNames.forEach((componentName) => {
         if (!components[componentName]) {
           const Component = class extends HTMLElement {
+            signals = [];
+
             connectedCallback() {
               const key = this.getAttribute("key") || getId("fwc");
               this.setAttribute("key", key);
 
               console.log(`[${componentName}.${key}] connected, rendering...`);
+
+              currentInstanceSignals = [...this.signals];
               render(window[componentName], this);
+              this.signals = [...newSignals];
+              newSignals = [];
+
+              eventTarget.addEventListener(
+                "signalUpdate",
+                this.handleSignalUpdate
+              );
             }
+
+            disconnectedCallback() {
+              eventTarget.removeEventListener(
+                "signalUpdate",
+                this.handleSignalUpdate
+              );
+            }
+
+            // Arrow function for event listener
+            handleSignalUpdate = ({ detail: { id } }) => {
+              if (this.signals.some((signal) => signal.id === id)) {
+                currentInstanceSignals = [...this.signals];
+                render(window[componentName], this);
+              }
+            };
           };
 
           customElements.define(snakeCase(componentName), Component);
@@ -97,7 +141,16 @@
     }
 
     function MyButton() {
-      return `<button>press me</button>`;
+      const count = signal(0);
+      const globalFnName = "setCount_" + count.id;
+      window[globalFnName] = (value) => (count.value = value);
+
+      return `
+        <div>${count.value}</div>
+        <button onclick="window.${globalFnName}(${count.value + 1})">
+          press me
+        </button>
+      `;
     }
 
     function HelloWorld() {
@@ -110,7 +163,8 @@
     function App() {
       return `
         <div>greetings:</div>
-        <HelloWorld key="key-override"></HelloWorld>
+        <!-- <HelloWorld></HelloWorld> -->
+        <HelloWorld></HelloWorld>
         <HelloWorld></HelloWorld>
       `;
     }
