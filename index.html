@@ -9,6 +9,9 @@
     const components = {};
     const instances = {};
 
+    let currentInstanceKey;
+    let currentInstanceSignalIndex = 0;
+
     function snakeCase(str) {
       return str
         .split("")
@@ -44,7 +47,10 @@
 
     // Rules of hooks apply
     function signal(initialValue) {
-      let signal = currentInstanceSignals.shift();
+      const instanceKey = currentInstanceKey;
+      const instanceSignals = instances[instanceKey].signals;
+
+      let signal = instanceSignals[currentInstanceSignalIndex];
 
       if (!signal) {
         const id = getId("signal");
@@ -58,6 +64,14 @@
                 if (prop === "id") {
                   return id;
                 }
+
+                if (prop === "toString") {
+                  return () =>
+                    `instances.${instanceKey}.signals[${instances[
+                      instanceKey
+                    ].signals.findIndex((signal) => signal.id === id)}].proxy`;
+                }
+
                 return target[prop];
               },
 
@@ -79,9 +93,10 @@
           ),
         };
 
-        newSignals.push(signal);
+        instanceSignals.push(signal);
       }
 
+      currentInstanceSignalIndex++;
       return signal.proxy;
     }
 
@@ -92,18 +107,16 @@
       componentNames.forEach((componentName) => {
         if (!components[componentName]) {
           const Component = class extends HTMLElement {
-            signals = [];
-
             connectedCallback() {
               const key = this.getAttribute("key") || getId("fwc");
               this.setAttribute("key", key);
 
               console.log(`[${componentName}.${key}] connected, rendering...`);
 
-              currentInstanceSignals = [...this.signals];
+              currentInstanceKey = key;
+              instances[key] ||= { signals: [] };
+              currentInstanceSignalIndex = 0;
               render(window[componentName], this);
-              this.signals = [...newSignals];
-              newSignals = [];
 
               eventTarget.addEventListener(
                 "signalUpdate",
@@ -120,8 +133,13 @@
 
             // Arrow function for event listener
             handleSignalUpdate = ({ detail: { id } }) => {
-              if (this.signals.some((signal) => signal.id === id)) {
-                currentInstanceSignals = [...this.signals];
+              if (
+                instances[this.getAttribute("key")].signals.some(
+                  (signal) => signal.id === id
+                )
+              ) {
+                currentInstanceKey = this.getAttribute("key");
+                currentInstanceSignalIndex = 0;
                 render(window[componentName], this);
               }
             };
@@ -147,7 +165,7 @@
 
       return `
         <div>${count.value}</div>
-        <button onclick="window.${globalFnName}(${count.value + 1})">
+        <button onclick="window.${globalFnName}(${count}.value + 1)">
           press me
         </button>
       `;
