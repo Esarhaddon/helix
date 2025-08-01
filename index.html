@@ -100,6 +100,8 @@
       return signal.proxy;
     }
 
+    // Keys are required for children when the number of components of a certain
+    // type or the order of components might change
     function render(component, destination) {
       let html = component();
       const componentNames = getUnreplacedNames(html);
@@ -107,6 +109,12 @@
       componentNames.forEach((componentName) => {
         if (!components[componentName]) {
           const Component = class extends HTMLElement {
+            constructor() {
+              super();
+
+              this.handleSignalUpdate = this.handleSignalUpdate.bind(this);
+            }
+
             connectedCallback() {
               const key = this.getAttribute("key") || getId("fwc");
               this.setAttribute("key", key);
@@ -114,7 +122,7 @@
               console.log(`[${componentName}.${key}] connected, rendering...`);
 
               currentInstanceKey = key;
-              instances[key] ||= { signals: [] };
+              instances[key] ||= { signals: [], childKeys: {} };
               currentInstanceSignalIndex = 0;
               render(window[componentName], this);
 
@@ -131,8 +139,7 @@
               );
             }
 
-            // Arrow function for event listener
-            handleSignalUpdate = ({ detail: { id } }) => {
+            handleSignalUpdate({ detail: { id } }) {
               if (
                 instances[this.getAttribute("key")].signals.some(
                   (signal) => signal.id === id
@@ -142,7 +149,7 @@
                 currentInstanceSignalIndex = 0;
                 render(window[componentName], this);
               }
-            };
+            }
           };
 
           customElements.define(snakeCase(componentName), Component);
@@ -152,22 +159,62 @@
           };
         }
 
+        const destinationKey = destination.getAttribute("key") || getId("fwc");
+        destination.setAttribute("key", destinationKey);
+        instances[destinationKey] ||= { signals: [], childKeys: {} };
+
+        const countsByComponentName = {};
+        const ogHtmlLength = html.length;
+
+        [
+          ...html.matchAll(
+            /<([A-Z][a-zA-Z0-9]*)(?:(?:.|\n)*?key="(.*?)".*?)?(?:.|\n)*?>/g
+          ),
+        ].map((match, i) => {
+          const [tag, componentName, assignedKey] = match;
+          countsByComponentName[componentName] ||= 0;
+          countsByComponentName[componentName]++;
+
+          if (assignedKey) {
+            return;
+          }
+
+          const key = (instances[destinationKey].childKeys[
+            componentName + "_" + countsByComponentName[componentName]
+          ] ||= getId("fwc"));
+
+          html = html
+            .split("")
+            .toSpliced(
+              match.index - ogHtmlLength,
+              tag.length,
+              tag.split(componentName).join(`${componentName} key="${key}" `)
+            )
+            .join("");
+        });
+
         html = html.replaceAll(componentName, snakeCase(componentName));
       });
 
       destination.innerHTML = html;
     }
 
-    function MyButton() {
+    function NestedComponent() {
       const count = signal(0);
-      const globalFnName = "setCount_" + count.id;
-      window[globalFnName] = (value) => (count.value = value);
 
       return `
         <div>${count.value}</div>
-        <button onclick="window.${globalFnName}(${count}.value + 1)">
-          press me
-        </button>
+        <button onclick="${count}.value++">press me (nested)</button>
+      `;
+    }
+
+    function MyButton() {
+      const count = signal(0);
+
+      return `
+        <div>${count.value}</div>
+        <button onclick="${count}.value++">press me</button>
+        <NestedComponent></NestedComponent>
       `;
     }
 
