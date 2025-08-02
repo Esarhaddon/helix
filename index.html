@@ -100,12 +100,26 @@
       return signal.proxy;
     }
 
-    // Keys are required for children when the number of components of a certain
-    // type or the order of components might change
+    // Keys are required for children when the number of child components of a
+    // certain type or the order of components might change
     function render(component, destination) {
-      let html = component();
-      const componentNames = getUnreplacedNames(html);
+      const destinationKey = destination.getAttribute("key") || getId("fwc");
+      destination.setAttribute("key", destinationKey);
 
+      instances[destinationKey] ||= {
+        signals: [],
+        childKeys: {},
+      };
+
+      const interpolatedChildren = (instances[
+        destinationKey
+      ].interpolatedChildren ??= destination.innerHTML);
+
+      let html = component({
+        children: interpolatedChildren,
+      });
+
+      const componentNames = getUnreplacedNames(html);
       componentNames.forEach((componentName) => {
         if (!components[componentName]) {
           const Component = class extends HTMLElement {
@@ -121,9 +135,9 @@
 
               console.log(`[${componentName}.${key}] connected, rendering...`);
 
+              currentInstanceSignalIndex = 0;
               currentInstanceKey = key;
               instances[key] ||= { signals: [], childKeys: {} };
-              currentInstanceSignalIndex = 0;
               render(window[componentName], this);
 
               eventTarget.addEventListener(
@@ -159,13 +173,12 @@
           };
         }
 
-        const destinationKey = destination.getAttribute("key") || getId("fwc");
-        destination.setAttribute("key", destinationKey);
-        instances[destinationKey] ||= { signals: [], childKeys: {} };
-
         const countsByComponentName = {};
         const ogHtmlLength = html.length;
 
+        // Walk through child component names, replace them with valid web
+        // component names, track keys, and reset interpolated children for each
+        // one since their parent is re-rendering
         [
           ...html.matchAll(
             /<([A-Z][a-zA-Z0-9]*)(?:(?:.|\n)*?key="(.*?)".*?)?(?:.|\n)*?>/g
@@ -196,15 +209,26 @@
         html = html.replaceAll(componentName, snakeCase(componentName));
       });
 
+      Object.values(instances[destinationKey].childKeys).forEach((key) => {
+        if (instances[key]) {
+          instances[key].interpolatedChildren = undefined;
+        }
+      });
+
       destination.innerHTML = html;
     }
 
-    function NestedComponent() {
+    function NestedComponent({ children }) {
       const count = signal(0);
 
       return `
         <div>${count.value}</div>
         <button onclick="${count}.value++">press me (nested)</button>
+        ${count.value > 5 ? `<span>count is over 5!</span>` : ""}
+        <div>
+          some stuff that's even more nested:
+          <div>${children}</div>
+        </div>
       `;
     }
 
@@ -225,10 +249,25 @@
       `;
     }
 
+    function ChildrenTest() {
+      const bigNumber = signal(1_000);
+
+      return `
+        <NestedComponent>
+          <button onclick="${bigNumber}.value--">${bigNumber.value}</button>
+          This is a <strong>child</strong> of Nested\\Component
+          <div style="border: 1px solid red">
+          <MyButton></MyButton>
+          </div>
+        </NestedComponent>
+      `;
+    }
+
     function App() {
       return `
         <div>greetings:</div>
         <!-- <HelloWorld></HelloWorld> -->
+        <ChildrenTest></ChildrenTest>
         <HelloWorld></HelloWorld>
         <HelloWorld></HelloWorld>
       `;
