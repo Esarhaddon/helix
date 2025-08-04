@@ -8,6 +8,7 @@
     const eventTarget = new EventTarget();
     const components = {};
     const instances = {};
+    const unclaimedProps = {};
 
     let currentInstanceKey;
     let currentInstanceSignalIndex = 0;
@@ -30,6 +31,23 @@
           )
         ),
       ];
+    }
+
+    function getTagAttribute(tag, attribute) {
+      const match = tag.match(new RegExp(`${attribute}="(.*)"`));
+      if (match) {
+        return match[1];
+      }
+    }
+
+    function getElementAttributes(element) {
+      return Object.fromEntries(
+        element
+          .getAttributeNames()
+          .flatMap((attributeName) => [
+            [attributeName, element.getAttribute(attributeName)],
+          ])
+      );
     }
 
     const counts = {};
@@ -100,9 +118,15 @@
       return signal.proxy;
     }
 
+    function props(data) {
+      const tmpId = getId("props");
+      unclaimedProps[tmpId] = data;
+      return `props="${tmpId}"`;
+    }
+
     // Keys are required for children when the number of child components of a
     // certain type or the order of components might change
-    function render(component, destination) {
+    function render(destination, component, props) {
       const destinationKey = destination.getAttribute("key") || getId("fwc");
       destination.setAttribute("key", destinationKey);
 
@@ -116,6 +140,7 @@
       ].interpolatedChildren ??= destination.innerHTML);
 
       let html = component({
+        ...props,
         children: interpolatedChildren,
       });
 
@@ -138,7 +163,11 @@
               currentInstanceSignalIndex = 0;
               currentInstanceKey = key;
               instances[key] ||= { signals: [], childKeys: {} };
-              render(window[componentName], this);
+
+              render(this, window[componentName], {
+                ...getElementAttributes(this),
+                ...instances[key].props,
+              });
 
               eventTarget.addEventListener(
                 "signalUpdate",
@@ -161,7 +190,10 @@
               ) {
                 currentInstanceKey = this.getAttribute("key");
                 currentInstanceSignalIndex = 0;
-                render(window[componentName], this);
+                render(this, window[componentName], {
+                  ...getElementAttributes(this),
+                  ...instances[currentInstanceKey].props,
+                });
               }
             }
           };
@@ -177,34 +209,43 @@
         const ogHtmlLength = html.length;
 
         // Walk through child component names, replace them with valid web
-        // component names, track keys, and reset interpolated children for each
-        // one since their parent is re-rendering
-        [
-          ...html.matchAll(
-            /<([A-Z][a-zA-Z0-9]*)(?:(?:.|\n)*?key="(.*?)".*?)?(?:.|\n)*?>/g
-          ),
-        ].map((match, i) => {
-          const [tag, componentName, assignedKey] = match;
-          countsByComponentName[componentName] ||= 0;
-          countsByComponentName[componentName]++;
+        // component names, track keys and props, and reset interpolated
+        // children for each one since their parent is re-rendering
+        [...html.matchAll(/<([A-Z][a-zA-Z0-9]*)(?:.|\n)*?>/g)].map(
+          (match, i) => {
+            const [tag, componentName] = match;
+            countsByComponentName[componentName] ||= 0;
+            countsByComponentName[componentName]++;
 
-          if (assignedKey) {
-            return;
+            const assignedKey = getTagAttribute(tag, "key");
+            const tmpPropsId = getTagAttribute(tag, "props");
+
+            const key =
+              assignedKey ||
+              (instances[destinationKey].childKeys[
+                componentName + "_" + countsByComponentName[componentName]
+              ] ||= getId("fwc"));
+
+            if (tmpPropsId) {
+              instances[key] ||= { signals: [], childKeys: {} };
+              instances[key].props = unclaimedProps[tmpPropsId];
+              delete unclaimedProps[tmpPropsId];
+            }
+
+            if (assignedKey) {
+              return;
+            }
+
+            html = html
+              .split("")
+              .toSpliced(
+                match.index - ogHtmlLength,
+                tag.length,
+                tag.split(componentName).join(`${componentName} key="${key}" `)
+              )
+              .join("");
           }
-
-          const key = (instances[destinationKey].childKeys[
-            componentName + "_" + countsByComponentName[componentName]
-          ] ||= getId("fwc"));
-
-          html = html
-            .split("")
-            .toSpliced(
-              match.index - ogHtmlLength,
-              tag.length,
-              tag.split(componentName).join(`${componentName} key="${key}" `)
-            )
-            .join("");
-        });
+        );
 
         html = html.replaceAll(componentName, snakeCase(componentName));
       });
@@ -232,12 +273,12 @@
       `;
     }
 
-    function MyButton() {
+    function MyButton({ children }) {
       const count = signal(0);
 
       return `
         <div>${count.value}</div>
-        <button onclick="${count}.value++">press me</button>
+        <button onclick="${count}.value++">${children || "press me"}</button>
         <NestedComponent></NestedComponent>
       `;
     }
@@ -249,15 +290,32 @@
       `;
     }
 
+    function MyBadge({ text, logHello, subtitle }) {
+      logHello();
+      return `
+        <div>badge text: ${text}</div>
+        <div>${subtitle}</div>
+      `;
+    }
+
     function ChildrenTest() {
       const bigNumber = signal(1_000);
 
       return `
         <NestedComponent>
+          <MyBadge
+            subtitle="this is a subtitle"
+            ${props({
+              text: "hello world",
+              logHello: () => {
+                console.log("hello there!");
+              },
+            })}
+          ></MyBadge>
           <button onclick="${bigNumber}.value--">${bigNumber.value}</button>
           This is a <strong>child</strong> of Nested\\Component
           <div style="border: 1px solid red">
-          <MyButton></MyButton>
+            <MyButton></MyButton>
           </div>
         </NestedComponent>
       `;
@@ -265,14 +323,35 @@
 
     function App() {
       return `
+        <MyBadge
+          subtitle="this is a subtitle"
+          ${props({
+            text: "hello world",
+            logHello: () => {
+              console.log("hello there!");
+            },
+          })}
+        ></MyBadge>
         <div>greetings:</div>
         <!-- <HelloWorld></HelloWorld> -->
         <ChildrenTest></ChildrenTest>
         <HelloWorld></HelloWorld>
+        <MyButton>Custom text</MyButton>
         <HelloWorld></HelloWorld>
+        <NestedComponent>
+          <MyBadge
+            subtitle="this is a subtitle"
+            ${props({
+              text: "hello world",
+              logHello: () => {
+                console.log("hello there!");
+              },
+            })}
+          ></MyBadge>
+        </NestedComponent>
       `;
     }
 
-    render(App, document.getElementById("root"));
+    render(document.getElementById("root"), App);
   </script>
 </html>
