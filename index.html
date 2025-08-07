@@ -66,6 +66,7 @@
     // Rules of hooks apply
     function signal(initialValue) {
       const instanceKey = currentInstanceKey;
+      // DEV: -> definedSignals
       const instanceSignals = instances[instanceKey].signals;
 
       let signal = instanceSignals[currentInstanceSignalIndex];
@@ -88,6 +89,11 @@
                     `instances.${instanceKey}.signals[${instances[
                       instanceKey
                     ].signals.findIndex((signal) => signal.id === id)}].proxy`;
+                }
+
+                if (prop === "value" && currentInstanceKey) {
+                  instances[currentInstanceKey].accessedSignals ||= [];
+                  instances[currentInstanceKey].accessedSignals.push(signal);
                 }
 
                 return target[prop];
@@ -126,7 +132,7 @@
 
     // Keys are required for children when the number of child components of a
     // certain type or the order of components might change
-    function render(destination, component, props) {
+    function render(destination, component) {
       const destinationKey = destination.getAttribute("key") || getId("fwc");
       destination.setAttribute("key", destinationKey);
 
@@ -135,12 +141,20 @@
         childKeys: {},
       };
 
+      instances[destinationKey].props = {
+        ...getElementAttributes(destination),
+        ...instances[destinationKey].props,
+      };
+
       const interpolatedChildren = (instances[
         destinationKey
       ].interpolatedChildren ??= destination.innerHTML);
 
+      currentInstanceSignalIndex = 0;
+      currentInstanceKey = destinationKey;
+
       let html = component({
-        ...props,
+        ...instances[destinationKey].props,
         children: interpolatedChildren,
       });
 
@@ -160,14 +174,7 @@
 
               console.log(`[${componentName}.${key}] connected, rendering...`);
 
-              currentInstanceSignalIndex = 0;
-              currentInstanceKey = key;
-              instances[key] ||= { signals: [], childKeys: {} };
-
-              render(this, window[componentName], {
-                ...getElementAttributes(this),
-                ...instances[key].props,
-              });
+              render(this, window[componentName]);
 
               eventTarget.addEventListener(
                 "signalUpdate",
@@ -184,16 +191,11 @@
 
             handleSignalUpdate({ detail: { id } }) {
               if (
-                instances[this.getAttribute("key")].signals.some(
+                instances[this.getAttribute("key")].accessedSignals?.some(
                   (signal) => signal.id === id
                 )
               ) {
-                currentInstanceKey = this.getAttribute("key");
-                currentInstanceSignalIndex = 0;
-                render(this, window[componentName], {
-                  ...getElementAttributes(this),
-                  ...instances[currentInstanceKey].props,
-                });
+                render(this, window[componentName]);
               }
             }
           };
@@ -257,6 +259,8 @@
       });
 
       destination.innerHTML = html;
+
+      currentInstanceKey = undefined;
     }
 
     function NestedComponent({ children }) {
@@ -321,7 +325,24 @@
       `;
     }
 
+    function MyCounter({ count }) {
+      console.log("counter rendering...");
+
+      return `
+        <div>
+          --counter--
+          <div>${count.value}</div>
+          <button onclick="${count}.value++">+</button>
+          <button onclick="${count}.value--">-</button>
+        </div>
+      `;
+    }
+
     function App() {
+      const count = signal(0);
+
+      console.log("app rendering...");
+
       return `
         <MyBadge
           subtitle="this is a subtitle"
@@ -332,6 +353,7 @@
             },
           })}
         ></MyBadge>
+        <MyCounter ${props({ count })}></MyCounter>
         <div>greetings:</div>
         <!-- <HelloWorld></HelloWorld> -->
         <ChildrenTest></ChildrenTest>
