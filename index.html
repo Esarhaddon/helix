@@ -13,6 +13,16 @@
     let currentInstanceKey;
     let currentInstanceSignalIndex = 0;
 
+    const counts = {};
+    const unPrefixed = Symbol();
+
+    function getId(prefix) {
+      const key = prefix || unPrefixed;
+      counts[key] ||= 0;
+
+      return (prefix ? prefix + "_" : "") + ++counts[key];
+    }
+
     function snakeCase(str) {
       return str
         .split("")
@@ -50,14 +60,149 @@
       );
     }
 
-    const counts = {};
-    const unPrefixed = Symbol();
+    function register(componentName) {
+      if (!components[componentName]) {
+        const Component = class extends HTMLElement {
+          constructor() {
+            super();
+            this.handleSignalUpdate = this.handleSignalUpdate.bind(this);
+          }
+          connectedCallback() {
+            const key = this.getAttribute("key") || getId("fwc");
+            this.setAttribute("key", key);
 
-    function getId(prefix) {
-      const key = prefix || unPrefixed;
-      counts[key] ||= 0;
+            render(this, window[componentName]);
 
-      return (prefix ? prefix + "_" : "") + ++counts[key];
+            eventTarget.addEventListener(
+              "signalUpdate",
+              this.handleSignalUpdate
+            );
+          }
+
+          disconnectedCallback() {
+            eventTarget.removeEventListener(
+              "signalUpdate",
+              this.handleSignalUpdate
+            );
+          }
+
+          handleSignalUpdate({ detail: { id } }) {
+            if (
+              instances[this.getAttribute("key")].accessedSignals?.some(
+                (signal) => signal.id === id
+              )
+            ) {
+              render(this, window[componentName]);
+            }
+          }
+        };
+
+        customElements.define(snakeCase(componentName), Component);
+        components[componentName] = {
+          componentName,
+          component: Component,
+          registered: true,
+        };
+      }
+    }
+
+    function parseComponents(html) {
+      let parsed = html;
+      const ogHtmlLength = html.length;
+
+      [...html.matchAll(/<([A-Z][a-zA-Z0-9]*)(?:.|\n)*?>/g)].map((match, i) => {
+        const [tag, componentName] = match;
+        register(componentName);
+
+        parsed = html
+          .split("")
+          .toSpliced(
+            match.index - ogHtmlLength,
+            tag.length,
+            tag
+              .split(componentName)
+              .join(`${componentName} key="FWC_COMPONENT_KEY" `)
+          )
+          .join("");
+
+        parsed = parsed.replaceAll(componentName, snakeCase(componentName));
+      });
+
+      return parsed;
+    }
+
+    const html =
+      (strings, ...children) =>
+      () => {
+        const fragments = strings.map((fragment) => parseComponents(fragment));
+
+        return {
+          template: fragments.reduce((result, fragment, i) => {
+            if (!result.length) {
+              return fragment;
+            }
+
+            return result + "FWC_SLOT" + fragment;
+          }, ""),
+          children: children.map((child) => child()),
+        };
+      };
+
+    function fillTemplate(node, key = "", parents = []) {
+      const { template, children } = node;
+      const matches = [...template.matchAll(/(FWC_SLOT)|(FWC_COMPONENT_KEY)/g)];
+
+      let charIndex = 0;
+      let slotIndex = 0;
+      let componentIndex = 0;
+
+      node.key = currentInstanceKey + (key ? "-" + key : "");
+      node.html = matches.length ? "" : node.template;
+
+      matches.forEach((match) => {
+        switch (match[0]) {
+          case "FWC_SLOT":
+            const childKey =
+              currentInstanceKey + "-" + (key ? key + "." : "") + slotIndex;
+
+            node.html +=
+              template.slice(charIndex, match.index) +
+              `<fragment key="${childKey}">FWC_CHILD_${childKey}</fragment>`;
+            charIndex = match.index + "FWC_SLOT".length;
+            slotIndex++;
+
+            break;
+          case "FWC_COMPONENT_KEY":
+            node.html +=
+              template.slice(charIndex, match.index) +
+              currentInstanceKey +
+              "-" +
+              (key ? key + "." : "") +
+              componentIndex;
+            charIndex = match.index + "FWC_COMPONENT_KEY".length;
+            componentIndex++;
+        }
+      });
+
+      if (matches.length) {
+        node.html += template.slice(charIndex);
+      }
+
+      if (node.html) {
+        parents.forEach(
+          (parent) =>
+            (parent.html = parent.html.replace(
+              `FWC_CHILD_${currentInstanceKey + "-" + key}`,
+              node.html
+            ))
+        );
+      }
+
+      children.forEach((child, i) =>
+        fillTemplate(child, (key ? key + "." : "") + i, [...parents, node])
+      );
+
+      return node;
     }
 
     let newSignals = [];
@@ -66,7 +211,6 @@
     // Rules of hooks apply
     function signal(initialValue) {
       const instanceKey = currentInstanceKey;
-      // DEV: -> definedSignals
       const instanceSignals = instances[instanceKey].signals;
 
       let signal = instanceSignals[currentInstanceSignalIndex];
@@ -141,236 +285,40 @@
         childKeys: {},
       };
 
-      instances[destinationKey].props = {
-        ...getElementAttributes(destination),
-        ...instances[destinationKey].props,
-      };
-
-      const interpolatedChildren = (instances[
-        destinationKey
-      ].interpolatedChildren ??= destination.innerHTML);
-
       currentInstanceSignalIndex = 0;
       currentInstanceKey = destinationKey;
 
-      let html = component({
-        ...instances[destinationKey].props,
-        children: interpolatedChildren,
-      });
+      const results = fillTemplate(component()());
 
-      const componentNames = getUnreplacedNames(html);
-      componentNames.forEach((componentName) => {
-        if (!components[componentName]) {
-          const Component = class extends HTMLElement {
-            constructor() {
-              super();
+      console.log(`[${component.name}.${destinationKey}]:`);
+      console.log(results.html);
+      console.log(JSON.stringify(results, null, 2));
 
-              this.handleSignalUpdate = this.handleSignalUpdate.bind(this);
-            }
-
-            connectedCallback() {
-              const key = this.getAttribute("key") || getId("fwc");
-              this.setAttribute("key", key);
-
-              console.log(`[${componentName}.${key}] connected, rendering...`);
-
-              render(this, window[componentName]);
-
-              eventTarget.addEventListener(
-                "signalUpdate",
-                this.handleSignalUpdate
-              );
-            }
-
-            disconnectedCallback() {
-              eventTarget.removeEventListener(
-                "signalUpdate",
-                this.handleSignalUpdate
-              );
-            }
-
-            handleSignalUpdate({ detail: { id } }) {
-              if (
-                instances[this.getAttribute("key")].accessedSignals?.some(
-                  (signal) => signal.id === id
-                )
-              ) {
-                render(this, window[componentName]);
-              }
-            }
-          };
-
-          customElements.define(snakeCase(componentName), Component);
-          components[componentName] = {
-            component: Component,
-            defined: true,
-          };
-        }
-
-        const countsByComponentName = {};
-        const ogHtmlLength = html.length;
-
-        // Walk through child component names, replace them with valid web
-        // component names, track keys and props, and reset interpolated
-        // children for each one since their parent is re-rendering
-        [...html.matchAll(/<([A-Z][a-zA-Z0-9]*)(?:.|\n)*?>/g)].map(
-          (match, i) => {
-            const [tag, componentName] = match;
-            countsByComponentName[componentName] ||= 0;
-            countsByComponentName[componentName]++;
-
-            const assignedKey = getTagAttribute(tag, "key");
-            const tmpPropsId = getTagAttribute(tag, "props");
-
-            const key =
-              assignedKey ||
-              (instances[destinationKey].childKeys[
-                componentName + "_" + countsByComponentName[componentName]
-              ] ||= getId("fwc"));
-
-            if (tmpPropsId) {
-              instances[key] ||= { signals: [], childKeys: {} };
-              instances[key].props = unclaimedProps[tmpPropsId];
-              delete unclaimedProps[tmpPropsId];
-            }
-
-            if (assignedKey) {
-              return;
-            }
-
-            html = html
-              .split("")
-              .toSpliced(
-                match.index - ogHtmlLength,
-                tag.length,
-                tag.split(componentName).join(`${componentName} key="${key}" `)
-              )
-              .join("");
-          }
-        );
-
-        html = html.replaceAll(componentName, snakeCase(componentName));
-      });
-
-      Object.values(instances[destinationKey].childKeys).forEach((key) => {
-        if (instances[key]) {
-          instances[key].interpolatedChildren = undefined;
-        }
-      });
-
-      destination.innerHTML = html;
+      // TODO: do diffing here
+      destination.innerHTML = results.html;
 
       currentInstanceKey = undefined;
     }
 
-    function NestedComponent({ children }) {
-      const count = signal(0);
-
-      return `
-        <div>${count.value}</div>
-        <button onclick="${count}.value++">press me (nested)</button>
-        ${count.value > 5 ? `<span>count is over 5!</span>` : ""}
-        <div>
-          some stuff that's even more nested:
-          <div>${children}</div>
-        </div>
-      `;
-    }
-
-    function MyButton({ children }) {
-      const count = signal(0);
-
-      return `
-        <div>${count.value}</div>
-        <button onclick="${count}.value++">${children || "press me"}</button>
-        <NestedComponent></NestedComponent>
-      `;
-    }
-
-    function HelloWorld() {
-      return `
-        <div>hello world</div>
-        <MyButton></MyButton>
-      `;
-    }
-
-    function MyBadge({ text, logHello, subtitle }) {
-      logHello();
-      return `
-        <div>badge text: ${text}</div>
-        <div>${subtitle}</div>
-      `;
-    }
-
-    function ChildrenTest() {
-      const bigNumber = signal(1_000);
-
-      return `
-        <NestedComponent>
-          <MyBadge
-            subtitle="this is a subtitle"
-            ${props({
-              text: "hello world",
-              logHello: () => {
-                console.log("hello there!");
-              },
-            })}
-          ></MyBadge>
-          <button onclick="${bigNumber}.value--">${bigNumber.value}</button>
-          This is a <strong>child</strong> of Nested\\Component
-          <div style="border: 1px solid red">
-            <MyButton></MyButton>
-          </div>
-        </NestedComponent>
-      `;
-    }
-
-    function MyCounter({ count }) {
-      console.log("counter rendering...");
-
-      return `
-        <div>
-          --counter--
-          <div>${count.value}</div>
-          <button onclick="${count}.value++">+</button>
-          <button onclick="${count}.value--">-</button>
-        </div>
+    function TestComponent() {
+      return html`
+        <div>this is another test</div>
+        ${html`<span>
+          sort of annoying that this isn't an actual sibling
+          ${html`<span>what happens here?</span>`}
+        </span>`}
+        ${html`<span>does this work?</span>`}
       `;
     }
 
     function App() {
-      const count = signal(0);
-
-      console.log("app rendering...");
-
-      return `
-        <MyBadge
-          subtitle="this is a subtitle"
-          ${props({
-            text: "hello world",
-            logHello: () => {
-              console.log("hello there!");
-            },
-          })}
-        ></MyBadge>
-        <MyCounter ${props({ count })}></MyCounter>
-        <div>greetings:</div>
-        <!-- <HelloWorld></HelloWorld> -->
-        <ChildrenTest></ChildrenTest>
-        <HelloWorld></HelloWorld>
-        <MyButton>Custom text</MyButton>
-        <HelloWorld></HelloWorld>
-        <NestedComponent>
-          <MyBadge
-            subtitle="this is a subtitle"
-            ${props({
-              text: "hello world",
-              logHello: () => {
-                console.log("hello there!");
-              },
-            })}
-          ></MyBadge>
-        </NestedComponent>
+      return html`
+        <div>hello world</div>
+        <TestComponent></TestComponent>
+        ${html`<TestComponent></TestComponent>`}
+        <div>something else</div>
+        ${html`hello world again`}
+        <span>something at the end</span>
       `;
     }
 
