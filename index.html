@@ -131,22 +131,47 @@
       return parsed;
     }
 
-    const html =
-      (strings, ...children) =>
-      () => {
-        const fragments = strings.map((fragment) => parseComponents(fragment));
+    function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
+      return (strings, ...children) => {
+        const templateChildren = children.length ? children : defaultChildren;
+        const fragments = (strings || defaultStrings).map((fragment) =>
+          parseComponents(fragment)
+        );
 
         return {
+          key,
           template: fragments.reduce((result, fragment, i) => {
             if (!result.length) {
               return fragment;
             }
 
-            return result + "FWC_SLOT" + fragment;
+            return (
+              result +
+              (Array.isArray(templateChildren[i - 1])
+                ? Array(templateChildren[i - 1].length)
+                    .fill("FWC_SLOT")
+                    .join("")
+                : "FWC_SLOT") +
+              fragment
+            );
           }, ""),
-          children: children.map((child) => child()),
+          children: templateChildren.flatMap((child) => child),
         };
       };
+    }
+
+    function html(stringsOrConfig, ...children) {
+      if (Array.isArray(stringsOrConfig)) {
+        const strings = stringsOrConfig;
+        return getTemplateBuilder(undefined, strings, ...children)();
+      } else if (typeof stringsOrConfig === "string") {
+        const key = stringsOrConfig;
+        return getTemplateBuilder(key);
+      } else {
+        const config = stringsOrConfig;
+        return getTemplateBuilder(config.key);
+      }
+    }
 
     function fillTemplate(node, key = "", parents = []) {
       const { template, children } = node;
@@ -154,6 +179,7 @@
 
       let charIndex = 0;
       let slotIndex = 0;
+      let assignedChildKeyCount = 0;
       let componentIndex = 0;
 
       node.key = currentInstanceKey + (key ? "-" + key : "");
@@ -162,8 +188,16 @@
       matches.forEach((match) => {
         switch (match[0]) {
           case "FWC_SLOT":
+            const assignedChildKey = node.children[slotIndex].key;
+            if (assignedChildKey) {
+              assignedChildKeyCount++;
+            }
+
             const childKey =
-              currentInstanceKey + "-" + (key ? key + "." : "") + slotIndex;
+              currentInstanceKey +
+              "-" +
+              (key ? key + "." : "") +
+              (assignedChildKey || slotIndex - assignedChildKeyCount);
 
             node.html +=
               template.slice(charIndex, match.index) +
@@ -198,9 +232,20 @@
         );
       }
 
-      children.forEach((child, i) =>
-        fillTemplate(child, (key ? key + "." : "") + i, [...parents, node])
-      );
+      assignedChildKeyCount = 0;
+      children.forEach((child, i) => {
+        const assignedChildKey = child.key;
+        if (assignedChildKey) {
+          assignedChildKeyCount++;
+        }
+
+        fillTemplate(
+          child,
+          (key ? key + "." : "") +
+            (assignedChildKey || i - assignedChildKeyCount),
+          [...parents, node]
+        );
+      });
 
       return node;
     }
@@ -274,8 +319,6 @@
       return `props="${tmpId}"`;
     }
 
-    // Keys are required for children when the number of child components of a
-    // certain type or the order of components might change
     function render(destination, component) {
       const destinationKey = destination.getAttribute("key") || getId("fwc");
       destination.setAttribute("key", destinationKey);
@@ -288,7 +331,7 @@
       currentInstanceSignalIndex = 0;
       currentInstanceKey = destinationKey;
 
-      const results = fillTemplate(component()());
+      const results = fillTemplate(component());
 
       console.log(`[${component.name}.${destinationKey}]:`);
       console.log(results.html);
@@ -302,23 +345,18 @@
 
     function TestComponent() {
       return html`
-        <div>this is another test</div>
-        ${html`<span>
-          sort of annoying that this isn't an actual sibling
-          ${html`<span>what happens here?</span>`}
-        </span>`}
-        ${html`<span>does this work?</span>`}
+        <div>
+          ${("myKey",
+          ["a", "b", "c"].map((item) => html({ key: item })`thing`))}
+        </div>
       `;
     }
 
     function App() {
       return html`
-        <div>hello world</div>
+        <div>${html("test key")`this is the first child`}</div>
         <TestComponent></TestComponent>
-        ${html`<TestComponent></TestComponent>`}
-        <div>something else</div>
-        ${html`hello world again`}
-        <span>something at the end</span>
+        <div>${html`this is the last child`}</div>
       `;
     }
 
