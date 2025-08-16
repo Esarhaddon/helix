@@ -9,6 +9,7 @@
     const components = {};
     const instances = {};
     const unclaimedProps = {};
+    const eventHandlers = {};
 
     let currentInstanceKey;
     let currentInstanceSignalIndex = 0;
@@ -23,6 +24,19 @@
       return (prefix ? prefix + "_" : "") + ++counts[key];
     }
 
+    function isPrimitive(value) {
+      return (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        value === undefined ||
+        value === null
+      );
+    }
+
+    function isNullishPrimitive(value) {
+      return value === null || value === undefined;
+    }
+
     function snakeCase(str) {
       return str
         .split("")
@@ -33,33 +47,6 @@
         .toLowerCase();
     }
 
-    function getUnreplacedNames(template) {
-      return [
-        ...new Set(
-          [...template.matchAll(/<\/([A-Z].*?)>/g)].map(
-            ([_, componentName]) => componentName
-          )
-        ),
-      ];
-    }
-
-    function getTagAttribute(tag, attribute) {
-      const match = tag.match(new RegExp(`${attribute}="(.*)"`));
-      if (match) {
-        return match[1];
-      }
-    }
-
-    function getElementAttributes(element) {
-      return Object.fromEntries(
-        element
-          .getAttributeNames()
-          .flatMap((attributeName) => [
-            [attributeName, element.getAttribute(attributeName)],
-          ])
-      );
-    }
-
     function register(componentName) {
       if (!components[componentName]) {
         const Component = class extends HTMLElement {
@@ -67,11 +54,12 @@
             super();
             this.handleSignalUpdate = this.handleSignalUpdate.bind(this);
           }
+
           connectedCallback() {
             const key = this.getAttribute("key") || getId("fwc");
             this.setAttribute("key", key);
 
-            render(this, window[componentName]);
+            render(this, window[componentName], false);
 
             eventTarget.addEventListener(
               "signalUpdate",
@@ -92,7 +80,7 @@
                 (signal) => signal.id === id
               )
             ) {
-              render(this, window[componentName]);
+              render(this, window[componentName], false);
             }
           }
         };
@@ -110,21 +98,28 @@
       let parsed = html;
       const ogHtmlLength = html.length;
 
-      [...html.matchAll(/<([A-Z][a-zA-Z0-9]*)(?:.|\n)*?>/g)].map((match, i) => {
+      [...html.matchAll(/<([A-Z][a-zA-Z0-9]*) ?>?/g)].forEach((match, i) => {
         const [tag, componentName] = match;
         register(componentName);
 
-        parsed = html
+        // TODO: you'll need to use an actual parser to properly add keys to
+        // nodes
+        parsed = parsed
           .split("")
           .toSpliced(
             match.index - ogHtmlLength,
             tag.length,
             tag
               .split(componentName)
-              .join(`${componentName} key="HLX_COMPONENT_KEY" `)
+              .join(`${componentName} key="HLX_NODE_KEY" `)
           )
           .join("");
 
+        parsed = parsed.replaceAll(componentName, snakeCase(componentName));
+      });
+
+      [...html.matchAll(/<\/([A-Z][a-zA-Z0-9]*)>/g)].forEach((match) => {
+        const [closingTag, componentName] = match;
         parsed = parsed.replaceAll(componentName, snakeCase(componentName));
       });
 
@@ -138,24 +133,82 @@
           parseComponents(fragment)
         );
 
+        const childNodes = templateChildren.flatMap((child, i) => {
+          if (typeof child === "function") {
+            return { handler: child };
+          } else if (isPrimitive(child)) {
+            return {
+              primitive: true,
+              // TODO: escape this
+              html: isNullishPrimitive(child) ? "" : child.toString(),
+            };
+          } else {
+            return child;
+          }
+        });
+
         return {
           key,
           template: fragments.reduce((result, fragment, i) => {
-            if (!result.length) {
+            if (i === 0) {
               return fragment;
             }
 
-            return (
-              result +
-              (Array.isArray(templateChildren[i - 1])
-                ? Array(templateChildren[i - 1].length)
-                    .fill("HLX_SLOT")
-                    .join("")
-                : "HLX_SLOT") +
-              fragment
-            );
+            const attrIndexes = [];
+
+            // TODO: you'll need to use an actual parser to properly add keys to
+            // nodes
+            const lastTagStart = result
+              .split("")
+              .findLastIndex((char) => char === "<");
+
+            if (
+              lastTagStart >
+              result.split("").findLastIndex((char) => char === ">")
+            ) {
+              const lastTagNameEnd =
+                lastTagStart +
+                result
+                  .slice(lastTagStart)
+                  .split("")
+                  .findIndex((char) => char === " ");
+              const attributeDefiniationAt = result
+                .split("")
+                .findLastIndex((char) => char === "=");
+              const attributeName = result.slice(
+                result
+                  .slice(0, attributeDefiniationAt)
+                  .split("")
+                  .findLastIndex((char) => char === " ") + 1,
+                attributeDefiniationAt
+              );
+
+              childNodes[i - 1].attribute = true;
+              childNodes[i - 1].name = attributeName;
+
+              return (
+                (result.slice(lastTagStart).includes("HLX_NODE_KEY")
+                  ? result
+                  : result.slice(0, lastTagNameEnd) +
+                    ' key="HLX_NODE_KEY" ' +
+                    result.slice(lastTagNameEnd)) +
+                '"HLX_ATTR"' +
+                fragment
+              );
+            } else {
+              return (
+                result +
+                (Array.isArray(templateChildren[i - 1])
+                  ? Array(templateChildren[i - 1].length)
+                      .fill("HLX_SLOT")
+                      .join("")
+                  : "HLX_SLOT") +
+                fragment
+              );
+            }
           }, ""),
-          children: templateChildren.flatMap((child) => child),
+          children: childNodes.filter((child) => !child.attribute),
+          attributes: childNodes.filter((child) => child.attribute),
         };
       };
     }
@@ -174,15 +227,20 @@
     }
 
     function fillTemplate(node, key = "", parents = []) {
-      const { template, children } = node;
-      const matches = [...template.matchAll(/(HLX_SLOT)|(HLX_COMPONENT_KEY)/g)];
+      node.key = currentInstanceKey + (key ? "-" + key : "");
+
+      const { primitive, attribute, template, children, attributes } = node;
+      const matches = [
+        ...template.matchAll(/(HLX_SLOT)|(HLX_NODE_KEY)|(HLX_ATTR)/g),
+      ];
 
       let charIndex = 0;
       let slotIndex = 0;
       let assignedChildKeyCount = 0;
-      let componentIndex = 0;
+      let nodeIndex = 0;
 
-      node.key = currentInstanceKey + (key ? "-" + key : "");
+      const attributeKeys = [];
+
       node.html = matches.length ? "" : node.template;
 
       matches.forEach((match) => {
@@ -201,20 +259,34 @@
 
             node.html +=
               template.slice(charIndex, match.index) +
-              `<fragment key="${childKey}">HLX_CHILD_${childKey}</fragment>`;
+              `<hlx.fragment key="${childKey}">HLX_CHILD_${childKey}</hlx.fragment>`;
             charIndex = match.index + "HLX_SLOT".length;
             slotIndex++;
 
             break;
-          case "HLX_COMPONENT_KEY":
+          case "HLX_NODE_KEY":
             node.html +=
               template.slice(charIndex, match.index) +
               currentInstanceKey +
               "-" +
               (key ? key + "." : "") +
-              componentIndex;
-            charIndex = match.index + "HLX_COMPONENT_KEY".length;
-            componentIndex++;
+              nodeIndex;
+            charIndex = match.index + "HLX_NODE_KEY".length;
+            nodeIndex++;
+
+            break;
+          case "HLX_ATTR":
+            attributeKeys.push((key ? key + "." : "") + (nodeIndex - 1));
+            node.html +=
+              template.slice(charIndex, match.index) +
+              "HLX_ATTR_" +
+              currentInstanceKey +
+              "-" +
+              (key ? key + "." : "") +
+              (nodeIndex - 1);
+            charIndex = match.index + "HLX_ATTR".length;
+
+            break;
         }
       });
 
@@ -222,15 +294,19 @@
         node.html += template.slice(charIndex);
       }
 
-      if (node.html) {
-        parents.forEach(
-          (parent) =>
-            (parent.html = parent.html.replace(
-              `HLX_CHILD_${currentInstanceKey + "-" + key}`,
-              node.html
-            ))
+      attributes.forEach((attribute, i) => {
+        attribute.key = currentInstanceKey + "-" + attributeKeys[i];
+
+        if (attribute.handler) {
+          eventHandlers[`HLX_ATTR_${attribute.key}`] = attribute.handler;
+          attribute.html = `(function (e){eventHandlers['HLX_ATTR_${attribute.key}'](e)})(event)`;
+        }
+
+        node.html = node.html.replace(
+          "HLX_ATTR_" + attribute.key,
+          attribute.html
         );
-      }
+      });
 
       assignedChildKeyCount = 0;
       children.forEach((child, i) => {
@@ -239,13 +315,26 @@
           assignedChildKeyCount++;
         }
 
-        fillTemplate(
-          child,
+        const childKey =
           (key ? key + "." : "") +
-            (assignedChildKey || i - assignedChildKeyCount),
-          [...parents, node]
-        );
+          (assignedChildKey || i - assignedChildKeyCount);
+
+        if (child.primitive) {
+          child.key = currentInstanceKey + "-" + childKey;
+
+          node.html = node.html.replace(`HLX_CHILD_${child.key}`, child.html);
+        } else {
+          fillTemplate(child, childKey, [...parents, node]);
+        }
       });
+
+      parents.forEach(
+        (parent) =>
+          (parent.html = parent.html.replace(
+            `HLX_CHILD_${currentInstanceKey + "-" + key}`,
+            node.html
+          ))
+      );
 
       return node;
     }
@@ -275,7 +364,7 @@
 
                 if (prop === "toString") {
                   return () =>
-                    `instances.${instanceKey}.signals[${instances[
+                    `instances['${instanceKey}'].signals[${instances[
                       instanceKey
                     ].signals.findIndex((signal) => signal.id === id)}].proxy`;
                 }
@@ -313,15 +402,30 @@
       return signal.proxy;
     }
 
+    let propsCount = 0;
+
     function props(data) {
       const tmpId = getId("props");
       unclaimedProps[tmpId] = data;
-      return `props="${tmpId}"`;
+      return `${tmpId}`;
     }
 
-    function render(destination, component) {
+    function render(destination, component, isInitialRoot = true) {
       const destinationKey = destination.getAttribute("key") || getId("fwc");
       destination.setAttribute("key", destinationKey);
+
+      // Re-render the root component when its signals are updated
+      if (isInitialRoot) {
+        eventTarget.addEventListener("signalUpdate", ({ detail: { id } }) => {
+          if (
+            instances[destinationKey].accessedSignals.some(
+              (signal) => signal.id === id
+            )
+          ) {
+            render(destination, component, false);
+          }
+        });
+      }
 
       instances[destinationKey] ||= {
         signals: [],
@@ -331,31 +435,96 @@
       currentInstanceSignalIndex = 0;
       currentInstanceKey = destinationKey;
 
-      const results = fillTemplate(component());
+      const propsId = destination.getAttribute("props");
+      const props =
+        instances[currentInstanceKey].props ||
+        (propsId ? unclaimedProps[propsId] : {});
+      instances[currentInstanceKey].props = props;
+      delete unclaimedProps[propsId];
 
-      console.log(`[${component.name}.${destinationKey}]:`);
-      console.log(results.html);
-      console.log(JSON.stringify(results, null, 2));
+      const results = fillTemplate(component(props));
 
-      // TODO: do diffing here
-      destination.innerHTML = results.html;
+      if (instances[destinationKey].prevTemplate) {
+        getDomMutations(
+          instances[destinationKey].prevTemplate,
+          results
+        ).forEach((mutation) => mutation());
+      } else {
+        destination.innerHTML = results.html;
+      }
+
+      instances[destinationKey].prevTemplate = results;
 
       currentInstanceKey = undefined;
     }
 
-    function TestComponent() {
+    // TODO: handle arrays
+    function getDomMutations(prev, next, mutations = []) {
+      const element = document.querySelector(`[key="${next.key}"]`);
+
+      if (next.attribute && prev.html !== next.html) {
+        element.setAttribute(next.name, next.html);
+
+        // Keep the input's value *property* in sync with its value *attribute*
+        if (
+          element instanceof HTMLInputElement &&
+          next.name === "value" &&
+          element.value !== next.html
+        ) {
+          element.value = next.html;
+        }
+      } else if (!next.attribute && next.primitive && prev.html !== next.html) {
+        mutations.push(() => {
+          element.textContent = next.html;
+        });
+      } else if (prev.template !== next.template) {
+        mutations.push(() => {
+          element.innerHTML = next.html;
+        });
+      } else {
+        next.children?.forEach((child, i) => {
+          getDomMutations(prev?.children[i], child, mutations);
+        });
+        next.attributes?.forEach((attribute, i) => {
+          getDomMutations(prev?.attributes[i], attribute, mutations);
+        });
+      }
+
+      return mutations;
+    }
+  </script>
+  <script src="my-input.js"></script>
+  <script>
+    function ArrayTest() {
+      const formState = signal({});
+
+      return hlx`${Array(50)
+        .fill(null)
+        .map(
+          (_, index) => hlx(index.toString())`
+            <br/>
+            <MyInput props=${props({ formState, index })}></MyInput>`
+        )}`;
+    }
+
+    function MyCounter() {
+      const count = signal(0);
+
       return hlx`
-        <div>
-          ${("myKey", ["a", "b", "c"].map((item) => hlx({ key: item })`thing`))}
-        </div>
+        <div>${count.value}</div>
+        <button onclick=${() => count.value++}>+</button>
+        ${count.value > 5 ? hlx`<span>count is over 5!</span>` : ""}
       `;
     }
 
     function App() {
+      const test = signal(0);
+
       return hlx`
-        <div>${hlx("test key")`this is the first child`}</div>
-        <TestComponent></TestComponent>
-        <div>${hlx`this is the last child`}</div>
+        <div>${test.value}</div>
+        <button onclick=${() => test.value++}>inc</button>
+        <MyCounter></MyCounter>
+        <ArrayTest></ArrayTest>
       `;
     }
 
