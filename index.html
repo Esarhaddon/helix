@@ -121,7 +121,7 @@
             tag.length,
             tag
               .split(componentName)
-              .join(`${componentName} key="FWC_COMPONENT_KEY" `)
+              .join(`${componentName} key="HLX_COMPONENT_KEY" `)
           )
           .join("");
 
@@ -149,9 +149,9 @@
               result +
               (Array.isArray(templateChildren[i - 1])
                 ? Array(templateChildren[i - 1].length)
-                    .fill("FWC_SLOT")
+                    .fill("HLX_SLOT")
                     .join("")
-                : "FWC_SLOT") +
+                : "HLX_SLOT") +
               fragment
             );
           }, ""),
@@ -160,7 +160,7 @@
       };
     }
 
-    function html(stringsOrConfig, ...children) {
+    function hlx(stringsOrConfig, ...children) {
       if (Array.isArray(stringsOrConfig)) {
         const strings = stringsOrConfig;
         return getTemplateBuilder(undefined, strings, ...children)();
@@ -175,7 +175,7 @@
 
     function fillTemplate(node, key = "", parents = []) {
       const { template, children } = node;
-      const matches = [...template.matchAll(/(FWC_SLOT)|(FWC_COMPONENT_KEY)/g)];
+      const matches = [...template.matchAll(/(HLX_SLOT)|(HLX_COMPONENT_KEY)/g)];
 
       let charIndex = 0;
       let slotIndex = 0;
@@ -187,7 +187,7 @@
 
       matches.forEach((match) => {
         switch (match[0]) {
-          case "FWC_SLOT":
+          case "HLX_SLOT":
             const assignedChildKey = node.children[slotIndex].key;
             if (assignedChildKey) {
               assignedChildKeyCount++;
@@ -201,19 +201,19 @@
 
             node.html +=
               template.slice(charIndex, match.index) +
-              `<fragment key="${childKey}">FWC_CHILD_${childKey}</fragment>`;
-            charIndex = match.index + "FWC_SLOT".length;
+              `<fragment key="${childKey}">HLX_CHILD_${childKey}</fragment>`;
+            charIndex = match.index + "HLX_SLOT".length;
             slotIndex++;
 
             break;
-          case "FWC_COMPONENT_KEY":
+          case "HLX_COMPONENT_KEY":
             node.html +=
               template.slice(charIndex, match.index) +
               currentInstanceKey +
               "-" +
               (key ? key + "." : "") +
               componentIndex;
-            charIndex = match.index + "FWC_COMPONENT_KEY".length;
+            charIndex = match.index + "HLX_COMPONENT_KEY".length;
             componentIndex++;
         }
       });
@@ -226,7 +226,7 @@
         parents.forEach(
           (parent) =>
             (parent.html = parent.html.replace(
-              `FWC_CHILD_${currentInstanceKey + "-" + key}`,
+              `HLX_CHILD_${currentInstanceKey + "-" + key}`,
               node.html
             ))
         );
@@ -344,19 +344,18 @@
     }
 
     function TestComponent() {
-      return html`
+      return hlx`
         <div>
-          ${("myKey",
-          ["a", "b", "c"].map((item) => html({ key: item })`thing`))}
+          ${("myKey", ["a", "b", "c"].map((item) => hlx({ key: item })`thing`))}
         </div>
       `;
     }
 
     function App() {
-      return html`
-        <div>${html("test key")`this is the first child`}</div>
+      return hlx`
+        <div>${hlx("test key")`this is the first child`}</div>
         <TestComponent></TestComponent>
-        <div>${html`this is the last child`}</div>
+        <div>${hlx`this is the last child`}</div>
       `;
     }
 
