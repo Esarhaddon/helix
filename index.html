@@ -97,29 +97,32 @@
     function parseComponents(html) {
       let parsed = html;
       const ogHtmlLength = html.length;
+      const componentNames = [];
 
-      [...html.matchAll(/<([A-Z][a-zA-Z0-9]*) ?>?/g)].forEach((match, i) => {
+      [...html.matchAll(/<([A-Z][a-zA-Z0-9]*)[^>]*>?/g)].forEach((match, i) => {
         const [tag, componentName] = match;
         register(componentName);
+        componentNames.push(componentName);
 
         // TODO: you'll need to use an actual parser to properly add keys to
         // nodes
-        parsed = parsed
-          .split("")
-          .toSpliced(
-            match.index - ogHtmlLength,
-            tag.length,
-            tag
-              .split(componentName)
-              .join(`${componentName} key="HLX_NODE_KEY" `)
-          )
-          .join("");
 
-        parsed = parsed.replaceAll(componentName, snakeCase(componentName));
+        if (!tag.includes(`key="`)) {
+          parsed = parsed
+            .split("")
+            .toSpliced(
+              match.index - ogHtmlLength,
+              tag.length,
+              tag
+                .split(componentName)
+                .join(`${componentName} key="HLX_NODE_KEY" `) +
+                (tag.endsWith("/>") ? `</${componentName}>` : "")
+            )
+            .join("");
+        }
       });
 
-      [...html.matchAll(/<\/([A-Z][a-zA-Z0-9]*)>/g)].forEach((match) => {
-        const [closingTag, componentName] = match;
+      componentNames.forEach((componentName) => {
         parsed = parsed.replaceAll(componentName, snakeCase(componentName));
       });
 
@@ -129,9 +132,7 @@
     function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
       return (strings, ...children) => {
         const templateChildren = children.length ? children : defaultChildren;
-        const fragments = (strings || defaultStrings).map((fragment) =>
-          parseComponents(fragment)
-        );
+        const fragments = strings || defaultStrings;
 
         const childNodes = templateChildren.flatMap((child, i) => {
           if (typeof child === "function") {
@@ -149,64 +150,66 @@
 
         return {
           key,
-          template: fragments.reduce((result, fragment, i) => {
-            if (i === 0) {
-              return fragment;
-            }
+          template: parseComponents(
+            fragments.reduce((result, fragment, i) => {
+              if (i === 0) {
+                return fragment;
+              }
 
-            const attrIndexes = [];
+              const attrIndexes = [];
 
-            // TODO: you'll need to use an actual parser to properly add keys to
-            // nodes
-            const lastTagStart = result
-              .split("")
-              .findLastIndex((char) => char === "<");
-
-            if (
-              lastTagStart >
-              result.split("").findLastIndex((char) => char === ">")
-            ) {
-              const lastTagNameEnd =
-                lastTagStart +
-                result
-                  .slice(lastTagStart)
-                  .split("")
-                  .findIndex((char) => char === " ");
-              const attributeDefiniationAt = result
+              // TODO: you'll need to use an actual parser to properly add keys to
+              // nodes
+              const lastTagStart = result
                 .split("")
-                .findLastIndex((char) => char === "=");
-              const attributeName = result.slice(
-                result
-                  .slice(0, attributeDefiniationAt)
+                .findLastIndex((char) => char === "<");
+
+              if (
+                lastTagStart >
+                result.split("").findLastIndex((char) => char === ">")
+              ) {
+                const lastTagNameEnd =
+                  lastTagStart +
+                  result
+                    .slice(lastTagStart)
+                    .split("")
+                    .findIndex((char) => char === " ");
+                const attributeDefiniationAt = result
                   .split("")
-                  .findLastIndex((char) => char === " ") + 1,
-                attributeDefiniationAt
-              );
+                  .findLastIndex((char) => char === "=");
+                const attributeName = result.slice(
+                  result
+                    .slice(0, attributeDefiniationAt)
+                    .split("")
+                    .findLastIndex((char) => char === " ") + 1,
+                  attributeDefiniationAt
+                );
 
-              childNodes[i - 1].attribute = true;
-              childNodes[i - 1].name = attributeName;
+                childNodes[i - 1].attribute = true;
+                childNodes[i - 1].name = attributeName;
 
-              return (
-                (result.slice(lastTagStart).includes("HLX_NODE_KEY")
-                  ? result
-                  : result.slice(0, lastTagNameEnd) +
-                    ' key="HLX_NODE_KEY" ' +
-                    result.slice(lastTagNameEnd)) +
-                '"HLX_ATTR"' +
-                fragment
-              );
-            } else {
-              return (
-                result +
-                (Array.isArray(templateChildren[i - 1])
-                  ? Array(templateChildren[i - 1].length)
-                      .fill("HLX_SLOT")
-                      .join("")
-                  : "HLX_SLOT") +
-                fragment
-              );
-            }
-          }, ""),
+                return (
+                  (result.slice(lastTagStart).includes(`key="`)
+                    ? result
+                    : result.slice(0, lastTagNameEnd) +
+                      ' key="HLX_NODE_KEY" ' +
+                      result.slice(lastTagNameEnd)) +
+                  '"HLX_ATTR"' +
+                  fragment
+                );
+              } else {
+                return (
+                  result +
+                  (Array.isArray(templateChildren[i - 1])
+                    ? Array(templateChildren[i - 1].length)
+                        .fill("HLX_SLOT")
+                        .join("")
+                    : "HLX_SLOT") +
+                  fragment
+                );
+              }
+            }, "")
+          ),
           children: childNodes.filter((child) => !child.attribute),
           attributes: childNodes.filter((child) => child.attribute),
         };
@@ -503,7 +506,7 @@
         .map(
           (_, index) => hlx(index.toString())`
             <br/>
-            <MyInput props=${props({ formState, index })}></MyInput>`
+            <MyInput props=${props({ formState, index })} />`
         )}`;
     }
 
@@ -523,8 +526,8 @@
       return hlx`
         <div>${test.value}</div>
         <button onclick=${() => test.value++}>inc</button>
-        <MyCounter></MyCounter>
-        <ArrayTest></ArrayTest>
+        <MyCounter />
+        <ArrayTest />
       `;
     }
 
