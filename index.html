@@ -47,6 +47,10 @@
         .toLowerCase();
     }
 
+    function getCustomElementName(componentName) {
+      return "hlx-" + snakeCase(componentName);
+    }
+
     function register(componentName) {
       if (!components[componentName]) {
         const Component = class extends HTMLElement {
@@ -85,7 +89,7 @@
           }
         };
 
-        customElements.define(snakeCase(componentName), Component);
+        customElements.define(getCustomElementName(componentName), Component);
         components[componentName] = {
           componentName,
           component: Component,
@@ -123,7 +127,10 @@
       });
 
       componentNames.forEach((componentName) => {
-        parsed = parsed.replaceAll(componentName, snakeCase(componentName));
+        parsed = parsed.replaceAll(
+          componentName,
+          getCustomElementName(componentName)
+        );
       });
 
       return parsed;
@@ -506,11 +513,11 @@
         .map(
           (_, index) => hlx(index.toString())`
             <br/>
-            <MyInput props=${props({ formState, index })} />`
+            <Input props=${props({ formState, index })} />`
         )}`;
     }
 
-    function MyCounter() {
+    function Counter() {
       const count = signal(0);
 
       return hlx`
@@ -526,7 +533,7 @@
       return hlx`
         <div>${test.value}</div>
         <button onclick=${() => test.value++}>inc</button>
-        <MyCounter />
+        <Counter />
         <ArrayTest />
       `;
     }

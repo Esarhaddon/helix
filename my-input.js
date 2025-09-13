@@ -1,4 +1,4 @@
-function MyInput({ formState, index }) {
+function Input({ formState, index }) {
   return hlx`
     <input 
       value=${formState.value[index]}
