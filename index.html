@@ -15,10 +15,10 @@
     let currentInstanceSignalIndex = 0;
 
     const counts = {};
-    const unPrefixed = Symbol();
+    const unprefixed = Symbol();
 
     function getId(prefix) {
-      const key = prefix || unPrefixed;
+      const key = prefix || unprefixed;
       counts[key] ||= 0;
 
       return (prefix ? prefix + "_" : "") + ++counts[key];
@@ -237,19 +237,22 @@
     }
 
     function fillTemplate(node, key = "", parents = []) {
+      const { primitive, attribute, template, children, attributes } = node;
+
       node.key = currentInstanceKey + (key ? "-" + key : "");
 
-      const { primitive, attribute, template, children, attributes } = node;
+      let charIndex = 0;
+      let slotIndex = 0;
+      let nodeIndex = 0;
+      let assignedChildKeyCount = 0;
+
       const matches = [
         ...template.matchAll(/(HLX_SLOT)|(HLX_NODE_KEY)|(HLX_ATTR)/g),
       ];
 
-      let charIndex = 0;
-      let slotIndex = 0;
-      let assignedChildKeyCount = 0;
-      let nodeIndex = 0;
-
       const attributeKeys = [];
+      const childKeys = [];
+      const prefixedBaseKey = currentInstanceKey + "-" + (key ? key + "." : "");
 
       node.html = matches.length ? "" : node.template;
 
@@ -261,15 +264,17 @@
               assignedChildKeyCount++;
             }
 
-            const childKey =
-              currentInstanceKey +
-              "-" +
+            const unprefixedKey =
               (key ? key + "." : "") +
+              "slot." +
               (assignedChildKey || slotIndex - assignedChildKeyCount);
+            childKeys.push(unprefixedKey);
+
+            const prefixedKey = currentInstanceKey + "-" + unprefixedKey;
 
             node.html +=
               template.slice(charIndex, match.index) +
-              `<hlx.fragment key="${childKey}">HLX_CHILD_${childKey}</hlx.fragment>`;
+              `<hlx.fragment key="${prefixedKey}">HLX_CHILD_${prefixedKey}</hlx.fragment>`;
             charIndex = match.index + "HLX_SLOT".length;
             slotIndex++;
 
@@ -277,22 +282,18 @@
           case "HLX_NODE_KEY":
             node.html +=
               template.slice(charIndex, match.index) +
-              currentInstanceKey +
-              "-" +
-              (key ? key + "." : "") +
+              prefixedBaseKey +
               nodeIndex;
             charIndex = match.index + "HLX_NODE_KEY".length;
             nodeIndex++;
 
             break;
           case "HLX_ATTR":
-            attributeKeys.push((key ? key + "." : "") + (nodeIndex - 1));
+            attributeKeys.push(prefixedBaseKey + (nodeIndex - 1));
             node.html +=
               template.slice(charIndex, match.index) +
               "HLX_ATTR_" +
-              currentInstanceKey +
-              "-" +
-              (key ? key + "." : "") +
+              prefixedBaseKey +
               (nodeIndex - 1);
             charIndex = match.index + "HLX_ATTR".length;
 
@@ -305,7 +306,7 @@
       }
 
       attributes.forEach((attribute, i) => {
-        attribute.key = currentInstanceKey + "-" + attributeKeys[i];
+        attribute.key = attributeKeys[i];
 
         if (attribute.handler) {
           eventHandlers[`HLX_ATTR_${attribute.key}`] = attribute.handler;
@@ -320,21 +321,13 @@
 
       assignedChildKeyCount = 0;
       children.forEach((child, i) => {
-        const assignedChildKey = child.key;
-        if (assignedChildKey) {
-          assignedChildKeyCount++;
-        }
-
-        const childKey =
-          (key ? key + "." : "") +
-          (assignedChildKey || i - assignedChildKeyCount);
+        const unprefixedKey = childKeys[i];
 
         if (child.primitive) {
-          child.key = currentInstanceKey + "-" + childKey;
-
+          child.key = currentInstanceKey + "-" + unprefixedKey;
           node.html = node.html.replace(`HLX_CHILD_${child.key}`, child.html);
         } else {
-          fillTemplate(child, childKey, [...parents, node]);
+          fillTemplate(child, unprefixedKey, [...parents, node]);
         }
       });
 
@@ -522,7 +515,8 @@
 
       return hlx`
         <div>${count.value}</div>
-        <button onclick=${() => count.value++}>+</button>
+        <button onclick=${() => count.value++}>↑</button>
+        <button onclick=${() => count.value--}>↓</button>
         ${count.value > 5 ? hlx`<span>count is over 5!</span>` : ""}
       `;
     }
