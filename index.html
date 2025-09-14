@@ -8,8 +8,10 @@
     const eventTarget = new EventTarget();
     const components = {};
     const instances = {};
-    const unclaimedProps = {};
     const eventHandlers = {};
+    const propsByNodeKey = {};
+    const propsByParentNodeKey = {};
+    const previousPropsByNodeKey = {};
 
     let currentInstanceKey;
     let currentInstanceSignalIndex = 0;
@@ -37,6 +39,10 @@
       return value === null || value === undefined;
     }
 
+    function isObject(obj) {
+      return Boolean(obj && typeof obj === "object" && !Array.isArray(obj));
+    }
+
     function snakeCase(str) {
       return str
         .split("")
@@ -57,6 +63,7 @@
           constructor() {
             super();
             this.handleSignalUpdate = this.handleSignalUpdate.bind(this);
+            this.handlePropsChange = this.handlePropsChange.bind(this);
           }
 
           connectedCallback() {
@@ -69,12 +76,17 @@
               "signalUpdate",
               this.handleSignalUpdate
             );
+            eventTarget.addEventListener("propsChange", this.handlePropsChange);
           }
 
           disconnectedCallback() {
             eventTarget.removeEventListener(
               "signalUpdate",
               this.handleSignalUpdate
+            );
+            eventTarget.removeEventListener(
+              "propsChange",
+              this.handlePropsChange
             );
           }
 
@@ -84,6 +96,12 @@
                 (signal) => signal.id === id
               )
             ) {
+              render(this, window[componentName], false);
+            }
+          }
+
+          handlePropsChange({ detail: { key } }) {
+            if (key === this.getAttribute("key")) {
               render(this, window[componentName], false);
             }
           }
@@ -111,19 +129,20 @@
         // TODO: you'll need to use an actual parser to properly add keys to
         // nodes
 
-        if (!tag.includes(`key="`)) {
-          parsed = parsed
-            .split("")
-            .toSpliced(
-              match.index - ogHtmlLength,
-              tag.length,
-              tag
-                .split(componentName)
-                .join(`${componentName} key="HLX_NODE_KEY" `) +
-                (tag.endsWith("/>") ? `</${componentName}>` : "")
-            )
-            .join("");
-        }
+        parsed = parsed
+          .split("")
+          .toSpliced(
+            match.index - ogHtmlLength,
+            tag.length,
+            tag
+              .split(componentName)
+              .join(
+                !tag.includes(`key="`)
+                  ? `${componentName} key="HLX_NODE_KEY" `
+                  : componentName
+              ) + (tag.endsWith("/>") ? `</${componentName}>` : "")
+          )
+          .join("");
       });
 
       componentNames.forEach((componentName) => {
@@ -181,19 +200,25 @@
                     .slice(lastTagStart)
                     .split("")
                     .findIndex((char) => char === " ");
-                const attributeDefiniationAt = result
-                  .split("")
-                  .findLastIndex((char) => char === "=");
-                const attributeName = result.slice(
-                  result
-                    .slice(0, attributeDefiniationAt)
-                    .split("")
-                    .findLastIndex((char) => char === " ") + 1,
-                  attributeDefiniationAt
-                );
 
-                childNodes[i - 1].attribute = true;
-                childNodes[i - 1].name = attributeName;
+                const isAttribute = result.endsWith("=");
+                const isProps =
+                  result.endsWith("...") && isObject(childNodes[i - 1]);
+
+                if (isAttribute) {
+                  const attributeName = result.slice(
+                    result.split("").findLastIndex((char) => char === " ") + 1,
+                    -1
+                  );
+
+                  childNodes[i - 1].attribute = true;
+                  childNodes[i - 1].name = attributeName;
+                } else if (isProps) {
+                  childNodes[i - 1] = {
+                    values: childNodes[i - 1],
+                    isProps: true,
+                  };
+                }
 
                 return (
                   (result.slice(lastTagStart).includes(`key="`)
@@ -201,7 +226,7 @@
                     : result.slice(0, lastTagNameEnd) +
                       ' key="HLX_NODE_KEY" ' +
                       result.slice(lastTagNameEnd)) +
-                  '"HLX_ATTR"' +
+                  (isAttribute ? '"HLX_ATTR"' : isProps ? "HLX_PROPS" : "") +
                   fragment
                 );
               } else {
@@ -217,8 +242,11 @@
               }
             }, "")
           ),
-          children: childNodes.filter((child) => !child.attribute),
+          props: childNodes.filter((child) => child.isProps),
           attributes: childNodes.filter((child) => child.attribute),
+          children: childNodes.filter(
+            (child) => !child.attribute && !child.isProps
+          ),
         };
       };
     }
@@ -237,7 +265,8 @@
     }
 
     function fillTemplate(node, key = "", parents = []) {
-      const { primitive, attribute, template, children, attributes } = node;
+      const { primitive, attribute, template, children, attributes, props } =
+        node;
 
       node.key = currentInstanceKey + (key ? "-" + key : "");
 
@@ -247,11 +276,14 @@
       let assignedChildKeyCount = 0;
 
       const matches = [
-        ...template.matchAll(/(HLX_SLOT)|(HLX_NODE_KEY)|(HLX_ATTR)/g),
+        ...template.matchAll(
+          /(HLX_SLOT)|(HLX_NODE_KEY)|(HLX_ATTR)|(\.\.\.HLX_PROPS)/g
+        ),
       ];
 
       const attributeKeys = [];
       const childKeys = [];
+      const propsKeys = [];
       const prefixedBaseKey = currentInstanceKey + "-" + (key ? key + "." : "");
 
       node.html = matches.length ? "" : node.template;
@@ -260,6 +292,7 @@
         switch (match[0]) {
           case "HLX_SLOT":
             const assignedChildKey = node.children[slotIndex].key;
+
             if (assignedChildKey) {
               assignedChildKeyCount++;
             }
@@ -268,10 +301,9 @@
               (key ? key + "." : "") +
               "slot." +
               (assignedChildKey || slotIndex - assignedChildKeyCount);
-            childKeys.push(unprefixedKey);
-
             const prefixedKey = currentInstanceKey + "-" + unprefixedKey;
 
+            childKeys.push(unprefixedKey);
             node.html +=
               template.slice(charIndex, match.index) +
               `<hlx.fragment key="${prefixedKey}">HLX_CHILD_${prefixedKey}</hlx.fragment>`;
@@ -298,12 +330,30 @@
             charIndex = match.index + "HLX_ATTR".length;
 
             break;
+          case "...HLX_PROPS":
+            propsKeys.push(prefixedBaseKey + (nodeIndex - 1));
+            node.html += template.slice(charIndex, match.index);
+            charIndex = match.index + "...HLX_PROPS".length;
+
+            break;
         }
       });
 
       if (matches.length) {
         node.html += template.slice(charIndex);
       }
+
+      props.forEach((props, i) => {
+        props.key = propsKeys[i];
+
+        if (!propsByNodeKey[props.key]) {
+          previousPropsByNodeKey[props.key] = props.values;
+        }
+        propsByNodeKey[props.key] = props.values;
+
+        propsByParentNodeKey[currentInstanceKey] ||= {};
+        propsByParentNodeKey[currentInstanceKey][props.key] = props.values;
+      });
 
       attributes.forEach((attribute, i) => {
         attribute.key = attributeKeys[i];
@@ -319,7 +369,6 @@
         );
       });
 
-      assignedChildKeyCount = 0;
       children.forEach((child, i) => {
         const unprefixedKey = childKeys[i];
 
@@ -405,14 +454,6 @@
       return signal.proxy;
     }
 
-    let propsCount = 0;
-
-    function props(data) {
-      const tmpId = getId("props");
-      unclaimedProps[tmpId] = data;
-      return `${tmpId}`;
-    }
-
     function render(destination, component, isInitialRoot = true) {
       const destinationKey = destination.getAttribute("key") || getId("fwc");
       destination.setAttribute("key", destinationKey);
@@ -438,20 +479,28 @@
       currentInstanceSignalIndex = 0;
       currentInstanceKey = destinationKey;
 
-      const propsId = destination.getAttribute("props");
-      const props =
-        instances[currentInstanceKey].props ||
-        (propsId ? unclaimedProps[propsId] : {});
-      instances[currentInstanceKey].props = props;
-      delete unclaimedProps[propsId];
-
-      const results = fillTemplate(component(props));
+      const results = fillTemplate(component(propsByNodeKey[destinationKey]));
 
       if (instances[destinationKey].prevTemplate) {
         getDomMutations(
           instances[destinationKey].prevTemplate,
           results
         ).forEach((mutation) => mutation());
+
+        Object.entries(propsByParentNodeKey[currentInstanceKey] || {}).forEach(
+          ([key, props]) => {
+            if (
+              !Object.entries(props).every(
+                ([propKey, value]) =>
+                  previousPropsByNodeKey[key][propKey] === value
+              )
+            ) {
+              eventTarget.dispatchEvent(
+                new CustomEvent("propsChange", { detail: { key } })
+              );
+            }
+          }
+        );
       } else {
         destination.innerHTML = results.html;
       }
@@ -501,12 +550,13 @@
     function ArrayTest() {
       const formState = signal({});
 
-      return hlx`${Array(50)
+      return hlx`${Array(365)
         .fill(null)
         .map(
           (_, index) => hlx(index.toString())`
             <br/>
-            <Input props=${props({ formState, index })} />`
+            <Input ...${{ formState, index }} />
+          `
         )}`;
     }
 
@@ -521,12 +571,33 @@
       `;
     }
 
+    function Count({ count }) {
+      return hlx`
+        <div>
+          The count is: ${count}
+        </div>
+      `;
+    }
+
+    function RenderTest({ text }) {
+      return hlx`
+        <div>
+          ${text}  
+        </div>
+      `;
+    }
+
     function App() {
       const test = signal(0);
+      const text = "hello world";
 
       return hlx`
-        <div>${test.value}</div>
+        <Count ...${{
+          count: hlx`<span>${test.value}</span>`,
+        }} 
+        />
         <button onclick=${() => test.value++}>inc</button>
+        <RenderTest ...${{ text }} />
         <Counter />
         <ArrayTest />
       `;
