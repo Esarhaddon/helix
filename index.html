@@ -121,7 +121,7 @@
       const ogHtmlLength = html.length;
       const componentNames = [];
 
-      [...html.matchAll(/<([A-Z][a-zA-Z0-9]*)[^>]*>?/g)].forEach((match, i) => {
+      [...html.matchAll(/<([A-Z][a-zA-Z0-9]*)[^>]*>/g)].forEach((match, i) => {
         const [tag, componentName] = match;
         register(componentName);
         componentNames.push(componentName);
@@ -181,8 +181,6 @@
               if (i === 0) {
                 return fragment;
               }
-
-              const attrIndexes = [];
 
               // TODO: you'll need to use an actual parser to properly add keys to
               // nodes
@@ -471,6 +469,11 @@
         });
       }
 
+      if (!instances[destinationKey] && destination.innerHTML) {
+        propsByNodeKey[destinationKey] ||= {};
+        propsByNodeKey[destinationKey].children = destination.innerHTML;
+      }
+
       instances[destinationKey] ||= {
         signals: [],
         childKeys: {},
@@ -488,17 +491,18 @@
         ).forEach((mutation) => mutation());
 
         Object.entries(propsByParentNodeKey[currentInstanceKey] || {}).forEach(
-          ([key, props]) => {
+          ([nodeKey, props]) => {
             if (
               !Object.entries(props).every(
                 ([propKey, value]) =>
-                  previousPropsByNodeKey[key][propKey] === value
+                  previousPropsByNodeKey[nodeKey][propKey] === value
               )
             ) {
               eventTarget.dispatchEvent(
-                new CustomEvent("propsChange", { detail: { key } })
+                new CustomEvent("propsChange", { detail: { key: nodeKey } })
               );
             }
+            previousPropsByNodeKey[nodeKey] = props;
           }
         );
       } else {
@@ -545,16 +549,16 @@
       return mutations;
     }
   </script>
-  <script src="my-input.js"></script>
+  <script src="input.js"></script>
   <script>
     function ArrayTest() {
       const formState = signal({});
 
-      return hlx`${Array(365)
+      return hlx`${Array(3)
         .fill(null)
         .map(
           (_, index) => hlx(index.toString())`
-            <br/>
+            ${index > 0 ? hlx`<br/>` : ""}
             <Input ...${{ formState, index }} />
           `
         )}`;
@@ -579,17 +583,18 @@
       `;
     }
 
-    function RenderTest({ text }) {
+    function ChildrenTest({ children } = {}) {
       return hlx`
+        <div>rendering children:</div>
         <div>
-          ${text}  
+          ${children}
         </div>
       `;
     }
 
     function App() {
       const test = signal(0);
-      const text = "hello world";
+      const formState = signal({});
 
       return hlx`
         <Count ...${{
@@ -597,8 +602,19 @@
         }} 
         />
         <button onclick=${() => test.value++}>inc</button>
-        <RenderTest ...${{ text }} />
         <Counter />
+        <ChildrenTest>
+         ${new Array(4).fill(null).map(
+           (_, index) => hlx(index.toString())`
+             <div>
+              <Input ...${{ formState, index }} />
+             </div>
+           `
+         )}
+        </ChildrenTest>
+        <p>
+          array test:
+        </p>
         <ArrayTest />
       `;
     }
