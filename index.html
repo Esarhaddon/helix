@@ -394,10 +394,11 @@
 
     // Rules of hooks apply
     function signal(initialValue) {
-      const instanceKey = currentInstanceKey;
-      const instanceSignals = instances[instanceKey].signals;
+      const instanceSignals = currentInstanceKey
+        ? instances[currentInstanceKey].signals
+        : undefined;
 
-      let signal = instanceSignals[currentInstanceSignalIndex];
+      let signal = instanceSignals?.[currentInstanceSignalIndex];
 
       if (!signal) {
         const id = getId("signal");
@@ -408,17 +409,6 @@
             { value: initialValue },
             {
               get(target, prop) {
-                if (prop === "id") {
-                  return id;
-                }
-
-                if (prop === "toString") {
-                  return () =>
-                    `instances['${instanceKey}'].signals[${instances[
-                      instanceKey
-                    ].signals.findIndex((signal) => signal.id === id)}].proxy`;
-                }
-
                 if (prop === "value" && currentInstanceKey) {
                   const accessedSignals = (instances[
                     currentInstanceKey
@@ -450,10 +440,13 @@
           ),
         };
 
-        instanceSignals.push(signal);
+        instanceSignals?.push(signal);
       }
 
-      currentInstanceSignalIndex++;
+      if (currentInstanceKey) {
+        currentInstanceSignalIndex++;
+      }
+
       return signal.proxy;
     }
 
@@ -508,7 +501,6 @@
 
       currentInstanceSignalIndex = 0;
       currentInstanceKey = destinationKey;
-
       const results = fillTemplate(component(propsByNodeKey[destinationKey]));
 
       if (instances[destinationKey].prevTemplate) {
@@ -574,6 +566,8 @@
         )}`;
     }
 
+    const global = signal("");
+
     function Counter() {
       const count = signal(0);
 
@@ -582,6 +576,7 @@
         <button onclick=${() => count.value++}>↑</button>
         <button onclick=${() => count.value--}>↓</button>
         ${count.value > 5 ? hlx`<span>count is over 5!</span>` : ""}
+        <div>global signal value: ${global.value}</div>
       `;
     }
 
@@ -613,6 +608,11 @@
         />
         <button onclick=${() => test.value++}>inc</button>
         <Counter />
+        <input 
+          placeholder="global value" 
+          value=${global.value} 
+          oninput=${(e) => (global.value = e.target.value)} 
+        />
         <ChildrenTest>
          ${new Array(4).fill(null).map(
            (_, index) => hlx(index.toString())`
@@ -622,9 +622,8 @@
            `
          )}
         </ChildrenTest>
-        <p>
-          array test:
-        </p>
+        <div>global signal test:</div>
+        <p>array test:</p>
         <ArrayTest />
       `;
     }
