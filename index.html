@@ -289,7 +289,11 @@
       matches.forEach((match) => {
         switch (match[0]) {
           case "HLX_SLOT":
-            const assignedChildKey = node.children[slotIndex].key;
+            // TODO: it's still possible for these to collide with the keys of
+            // array items in other arrays at the same level in the tree
+            const assignedChildKey = node.children[slotIndex].key
+              ? "key-" + node.children[slotIndex].key
+              : undefined;
 
             if (assignedChildKey) {
               assignedChildKeyCount++;
@@ -622,7 +626,7 @@
            `
          )}
         </ChildrenTest>
-        <div>global signal test:</div>
+        <div>global signal test: ${global.value}</div>
         <p>array test:</p>
         <ArrayTest />
       `;
