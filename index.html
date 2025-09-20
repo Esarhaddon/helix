@@ -57,7 +57,7 @@
       return "hlx-" + snakeCase(componentName);
     }
 
-    function register(componentName) {
+    function define(componentName) {
       if (!components[componentName]) {
         const Component = class extends HTMLElement {
           constructor() {
@@ -70,7 +70,7 @@
             const key = this.getAttribute("key") || getId("fwc");
             this.setAttribute("key", key);
 
-            render(this, window[componentName], false);
+            _render(this, window[componentName]);
 
             eventTarget.addEventListener(
               "signalUpdate",
@@ -96,13 +96,13 @@
                 (signal) => signal.id === id
               )
             ) {
-              render(this, window[componentName], false);
+              _render(this, window[componentName]);
             }
           }
 
           handlePropsChange({ detail: { key } }) {
             if (key === this.getAttribute("key")) {
-              render(this, window[componentName], false);
+              _render(this, window[componentName]);
             }
           }
         };
@@ -123,7 +123,7 @@
 
       [...html.matchAll(/<([A-Z][a-zA-Z0-9]*)[^>]*>/g)].forEach((match, i) => {
         const [tag, componentName] = match;
-        register(componentName);
+        define(componentName);
         componentNames.push(componentName);
 
         // TODO: you'll need to use an actual parser to properly add keys to
@@ -452,22 +452,44 @@
       return signal.proxy;
     }
 
-    function render(destination, component, isInitialRoot = true) {
-      const destinationKey = destination.getAttribute("key") || getId("fwc");
-      destination.setAttribute("key", destinationKey);
+    // TODO: handle arrays
+    function getDomMutations(prev, next, mutations = []) {
+      const element = document.querySelector(`[key="${next.key}"]`);
 
-      // Re-render the root component when its signals are updated
-      if (isInitialRoot) {
-        eventTarget.addEventListener("signalUpdate", ({ detail: { id } }) => {
-          if (
-            instances[destinationKey].accessedSignals.some(
-              (signal) => signal.id === id
-            )
-          ) {
-            render(destination, component, false);
-          }
+      if (next.attribute && prev.html !== next.html) {
+        element.setAttribute(next.name, next.html);
+
+        // Keep the input's value *property* in sync with its value *attribute*
+        if (
+          element instanceof HTMLInputElement &&
+          next.name === "value" &&
+          element.value !== next.html
+        ) {
+          element.value = next.html;
+        }
+      } else if (!next.attribute && next.primitive && prev.html !== next.html) {
+        mutations.push(() => {
+          element.textContent = next.html;
+        });
+      } else if (prev.template !== next.template) {
+        mutations.push(() => {
+          element.innerHTML = next.html;
+        });
+      } else {
+        next.children?.forEach((child, i) => {
+          getDomMutations(prev?.children[i], child, mutations);
+        });
+        next.attributes?.forEach((attribute, i) => {
+          getDomMutations(prev?.attributes[i], attribute, mutations);
         });
       }
+
+      return mutations;
+    }
+
+    function _render(destination, component) {
+      const destinationKey = destination.getAttribute("key") || getId("fwc");
+      destination.setAttribute("key", destinationKey);
 
       if (!instances[destinationKey] && destination.innerHTML) {
         propsByNodeKey[destinationKey] ||= {};
@@ -514,39 +536,22 @@
       currentInstanceKey = undefined;
     }
 
-    // TODO: handle arrays
-    function getDomMutations(prev, next, mutations = []) {
-      const element = document.querySelector(`[key="${next.key}"]`);
+    function render(root, application) {
+      const destinationKey = root.getAttribute("key") || getId("hlx");
+      root.setAttribute("key", destinationKey);
 
-      if (next.attribute && prev.html !== next.html) {
-        element.setAttribute(next.name, next.html);
-
-        // Keep the input's value *property* in sync with its value *attribute*
+      // Re-render the root component when its signals are updated
+      eventTarget.addEventListener("signalUpdate", ({ detail: { id } }) => {
         if (
-          element instanceof HTMLInputElement &&
-          next.name === "value" &&
-          element.value !== next.html
+          instances[destinationKey].accessedSignals.some(
+            (signal) => signal.id === id
+          )
         ) {
-          element.value = next.html;
+          _render(root, application);
         }
-      } else if (!next.attribute && next.primitive && prev.html !== next.html) {
-        mutations.push(() => {
-          element.textContent = next.html;
-        });
-      } else if (prev.template !== next.template) {
-        mutations.push(() => {
-          element.innerHTML = next.html;
-        });
-      } else {
-        next.children?.forEach((child, i) => {
-          getDomMutations(prev?.children[i], child, mutations);
-        });
-        next.attributes?.forEach((attribute, i) => {
-          getDomMutations(prev?.attributes[i], attribute, mutations);
-        });
-      }
+      });
 
-      return mutations;
+      _render(root, application);
     }
   </script>
   <script src="input.js"></script>
