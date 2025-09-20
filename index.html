@@ -420,8 +420,13 @@
                 }
 
                 if (prop === "value" && currentInstanceKey) {
-                  instances[currentInstanceKey].accessedSignals ||= [];
-                  instances[currentInstanceKey].accessedSignals.push(signal);
+                  const accessedSignals = (instances[
+                    currentInstanceKey
+                  ].accessedSignals ||= []);
+
+                  if (!accessedSignals.some(({ id }) => id === signal.id)) {
+                    accessedSignals.push(signal);
+                  }
                 }
 
                 return target[prop];
