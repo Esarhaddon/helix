@@ -63,6 +63,8 @@
           constructor() {
             super();
             this.handleSignalUpdate = this.handleSignalUpdate.bind(this);
+            this.handleDeepSignalUpdate =
+              this.handleDeepSignalUpdate.bind(this);
             this.handlePropsChange = this.handlePropsChange.bind(this);
           }
 
@@ -76,6 +78,10 @@
               "signalUpdate",
               this.handleSignalUpdate
             );
+            eventTarget.addEventListener(
+              "deepSignalUpdate",
+              this.handleDeepSignalUpdate
+            );
             eventTarget.addEventListener("propsChange", this.handlePropsChange);
           }
 
@@ -88,12 +94,26 @@
               "propsChange",
               this.handlePropsChange
             );
+            eventTarget.removeEventListener(
+              "deepSignalUpdate",
+              this.handleDeepSignalUpdate
+            );
           }
 
           handleSignalUpdate({ detail: { id } }) {
             if (
               instances[this.getAttribute("key")].accessedSignals?.some(
                 (signal) => signal.id === id
+              )
+            ) {
+              _render(this, window[componentName]);
+            }
+          }
+
+          handleDeepSignalUpdate({ detail: { id, path } }) {
+            if (
+              instances[this.getAttribute("key")].signalAccess?.[id]?.includes(
+                path
               )
             ) {
               _render(this, window[componentName]);
@@ -126,8 +146,7 @@
         define(componentName);
         componentNames.push(componentName);
 
-        // TODO: you'll need to use an actual parser to properly add keys to
-        // nodes
+        // TODO: tighten up the parsing
 
         parsed = parsed
           .split("")
@@ -182,8 +201,8 @@
                 return fragment;
               }
 
-              // TODO: you'll need to use an actual parser to properly add keys to
-              // nodes
+              // TODO: tighten up the parsing
+
               const lastTagStart = result
                 .split("")
                 .findLastIndex((char) => char === "<");
@@ -396,8 +415,63 @@
     let newSignals = [];
     let currentInstanceSignals = [];
 
-    // Rules of hooks apply
-    function signal(initialValue) {
+    function makeDeepSignalProxy(value, path, signalId) {
+      const proxy = new Proxy(value, {
+        get(target, prop) {
+          if (prop === "_isProxy") {
+            return true;
+          }
+
+          const result = target[prop];
+          const resultPath = (path ? path + "." : "") + prop;
+
+          if (currentInstanceKey) {
+            instances[currentInstanceKey].signalAccess ||= {};
+            instances[currentInstanceKey].signalAccess[signalId] ||= [];
+            instances[currentInstanceKey].signalAccess[signalId].push(
+              resultPath
+            );
+          }
+
+          if (isPrimitive(result) || result._isProxy) {
+            return result;
+          } else {
+            return makeDeepSignalProxy(result, resultPath, signalId);
+          }
+        },
+
+        set(target, prop, value) {
+          const shouldSendEvent = !(target[prop] === value);
+          target[prop] = value;
+
+          if (shouldSendEvent) {
+            eventTarget.dispatchEvent(
+              new CustomEvent("deepSignalUpdate", {
+                detail: { id: signalId, path: (path ? path + "." : "") + prop },
+              })
+            );
+          }
+        },
+      });
+
+      return proxy;
+    }
+
+    function _signal(initialValue) {
+      const id = getId("signal");
+
+      return {
+        id,
+        proxy: makeDeepSignalProxy({ value: initialValue }, "", id),
+      };
+    }
+
+    function createSignal(initialValue) {
+      return _signal(initialValue).proxy;
+    }
+
+    // Some of the rules of hooks apply
+    function useSignal(initialValue) {
       const instanceSignals = currentInstanceKey
         ? instances[currentInstanceKey].signals
         : undefined;
@@ -405,45 +479,7 @@
       let signal = instanceSignals?.[currentInstanceSignalIndex];
 
       if (!signal) {
-        const id = getId("signal");
-
-        signal = {
-          id,
-          proxy: new Proxy(
-            { value: initialValue },
-            {
-              get(target, prop) {
-                if (prop === "value" && currentInstanceKey) {
-                  const accessedSignals = (instances[
-                    currentInstanceKey
-                  ].accessedSignals ||= []);
-
-                  if (!accessedSignals.some(({ id }) => id === signal.id)) {
-                    accessedSignals.push(signal);
-                  }
-                }
-
-                return target[prop];
-              },
-
-              set(target, prop, value) {
-                target[prop] = value;
-
-                if (prop === "value") {
-                  eventTarget.dispatchEvent(
-                    new CustomEvent("signalUpdate", {
-                      detail: {
-                        id,
-                        value,
-                      },
-                    })
-                  );
-                }
-              },
-            }
-          ),
-        };
-
+        signal = _signal(initialValue);
         instanceSignals?.push(signal);
       }
 
@@ -454,7 +490,7 @@
       return signal.proxy;
     }
 
-    // TODO: handle arrays
+    // TODO: handle arrays?
     function getDomMutations(prev, next, mutations = []) {
       const element = document.querySelector(`[key="${next.key}"]`);
 
@@ -552,15 +588,24 @@
         }
       });
 
+      eventTarget.addEventListener(
+        "deepSignalUpdate",
+        ({ detail: { id, path } }) => {
+          if (instances[destinationKey].signalAccess?.[id]?.includes(path)) {
+            _render(root, application);
+          }
+        }
+      );
+
       _render(root, application);
     }
   </script>
   <script src="input.js"></script>
   <script>
     function ArrayTest() {
-      const formState = signal({});
+      const formState = useSignal({});
 
-      return hlx`${Array(3)
+      return hlx`${Array(1_000)
         .fill(null)
         .map(
           (_, index) => hlx(index.toString())`
@@ -570,10 +615,10 @@
         )}`;
     }
 
-    const global = signal("");
+    const global = createSignal("");
 
     function Counter() {
-      const count = signal(0);
+      const count = useSignal(0);
 
       return hlx`
         <div>${count.value}</div>
@@ -602,20 +647,20 @@
     }
 
     function App() {
-      const test = signal(0);
-      const formState = signal({});
+      const test = useSignal({ the: { count: 0 } });
+      const formState = useSignal({});
 
       return hlx`
         <Count ...${{
-          count: hlx`<span>${test.value}</span>`,
-        }} 
+          count: hlx`<span>${test.value.the.count}</span>`,
+        }}
         />
-        <button onclick=${() => test.value++}>inc</button>
+        <button onclick=${() => test.value.the.count++}>inc</button>
         <Counter />
-        <input 
-          placeholder="global value" 
-          value=${global.value} 
-          oninput=${(e) => (global.value = e.target.value)} 
+        <input
+          placeholder="global value"
+          value=${global.value}
+          oninput=${(e) => (global.value = e.target.value)}
         />
         <ChildrenTest>
          ${new Array(4).fill(null).map(

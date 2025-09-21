@@ -3,10 +3,7 @@ function Input({ formState, index }) {
     <input 
       value=${formState.value[index]}
       oninput=${(event) => {
-        formState.value = {
-          ...formState.value,
-          [index]: event.target.value,
-        };
+        formState.value[index] = event.target.value;
       }}
     />
   `;
