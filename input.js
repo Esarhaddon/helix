@@ -1,4 +1,8 @@
-function Input({ formState, index }) {
+import helix from "./helix.js";
+
+export const hlx = helix();
+
+export function Input({ formState, index }) {
   return hlx`
     <input 
       value=${formState.value[index]}
