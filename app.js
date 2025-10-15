@@ -27,13 +27,21 @@ export function Counter() {
     <div>${count.value}</div>
     <button onclick=${() => count.value++}>↑</button>
     <button onclick=${() => count.value--}>↓</button>
-    ${count.value > 5 ? hlx`<span>count is over 5!</span>` : ""}
+    ${
+      count.value > 5
+        ? hlx`
+            <span>count is over 5!</span>
+            <div>this is a div</div>
+            this is some text
+          `
+        : ""
+    }
     <div>global signal value: ${globalSignal.value}</div>
   `;
 }
 
 export function Count({ count }) {
-  return hlx` <div>The count is: ${count}</div> `;
+  return hlx`<div>The count is: ${count}</div>`;
 }
 
 export function ChildrenTest({ children } = {}) {
@@ -43,6 +51,22 @@ export function ChildrenTest({ children } = {}) {
       ${children}
     </div>
   `;
+}
+
+export function ThisShouldNotBreak() {
+  const count = useSignal(0);
+
+  return count.value < 3
+    ? hlx`
+        <div>count is under 3: ${count.value}</div>
+        <button onclick=${() => count.value++}>+</button>
+        <button onclick=${() => count.value--}>-</button>
+      `
+    : hlx`
+        <div>count is equal to or over 3: ${count.value}</div>
+        <button onclick=${() => count.value++}>+</button>
+        <button onclick=${() => count.value--}>-</button>
+      `;
 }
 
 export function App() {
@@ -61,14 +85,17 @@ export function App() {
       value=${globalSignal.value}
       oninput=${(e) => (globalSignal.value = e.target.value)}
     />
+    <ThisShouldNotBreak />
     <ChildrenTest>
-     ${new Array(4).fill(null).map(
-       (_, index) => hlx(index.toString())`
+     ${Array(3)
+       .fill(null)
+       .map(
+         (_, index) => hlx(index.toString())`
          <div>
           <Input ...${{ formState, index }} />
          </div>
        `
-     )}
+       )}
     </ChildrenTest>
     <GlobalSignalTest />
     <p>array test:</p>
