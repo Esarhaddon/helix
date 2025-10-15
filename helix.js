@@ -1,10 +1,11 @@
 // TODO:
 // - [x] modules
-// - [ ] identifiers in comments
-// - [ ] drop web components
-// - [ ] useTask
+// - [x] identifiers in html comments
+// - [x] drop web components
 // - [ ] production ready parsing
+// - [ ] fix arrays
 // - [ ] some optimization
+// - [ ] useTask
 // - [ ] SSR/resumability
 
 const eventTarget = new EventTarget();
@@ -53,6 +54,84 @@ function snakeCase(str) {
     .toLowerCase();
 }
 
+function findElementKey(element) {
+  let node = element.previousSibling;
+
+  while (node.nodeType !== Node.COMMENT_NODE || !node.nodeValue.trim()) {
+    node = node.previousSibling;
+  }
+
+  return node.nodeValue.trim();
+}
+
+function addEventListener(instanceKey, event, listener) {
+  instances[instanceKey].listeners ||= {};
+  instances[instanceKey].listeners[event] = listener;
+
+  eventTarget.addEventListener(event, listener);
+}
+
+function cleanupChildren(instanceKey) {
+  const staleInstances = Object.entries(instances).filter(
+    ([key]) => key !== instanceKey && key.startsWith(instanceKey)
+  );
+
+  staleInstances.forEach(([key, instance]) => {
+    Object.entries(instance.listeners).forEach(([event, listener]) => {
+      eventTarget.removeEventListener(event, listener);
+    });
+
+    delete instances[key];
+  });
+}
+
+function setHtml(key, html) {
+  const node = document.evaluate(
+    `//comment()[contains(string(), " ${key} ")]`,
+    document,
+    null,
+    XPathResult.FIRST_ORDERED_NODE_TYPE
+  ).singleNodeValue;
+
+  let nextSibling = node.nextSibling;
+  while (
+    nextSibling &&
+    (nextSibling.nodeType !== Node.COMMENT_NODE ||
+      !nextSibling.nodeValue?.includes(` ${key} `))
+  ) {
+    nextSibling.remove();
+    nextSibling = node.nextSibling;
+  }
+
+  const target = document.createElement("div");
+  const host = document.createElement("div");
+
+  host.innerHTML = html;
+  node.parentNode.insertBefore(target, node.nextSibling);
+  target.replaceWith(...host.childNodes);
+}
+
+function setText(key, text) {
+  const node = document.evaluate(
+    `//comment()[contains(string(), " ${key} ")]`,
+    document,
+    null,
+    XPathResult.FIRST_ORDERED_NODE_TYPE
+  ).singleNodeValue;
+
+  let nextSibling = node.nextSibling;
+  while (
+    nextSibling &&
+    (nextSibling.nodeType !== Node.COMMENT_NODE ||
+      !nextSibling.nodeValue?.includes(` ${key} `))
+  ) {
+    nextSibling.remove();
+    nextSibling = node.nextSibling;
+  }
+
+  node.parentNode.insertBefore(document.createTextNode(text), node.nextSibling);
+}
+
 function getCustomElementName(componentName) {
   return "hlx-" + snakeCase(componentName);
 }
@@ -71,34 +150,23 @@ function define(componentName, scope) {
       }
 
       connectedCallback() {
-        const key = this.getAttribute("key") || getId("fwc");
-        this.setAttribute("key", key);
+        this.key = findElementKey(this);
 
         render(this, component);
 
-        eventTarget.addEventListener("signalUpdate", this.handleSignalUpdate);
-        eventTarget.addEventListener("propsChange", this.handlePropsChange);
-      }
-
-      disconnectedCallback() {
-        eventTarget.removeEventListener("propsChange", this.handlePropsChange);
-        eventTarget.removeEventListener(
-          "signalUpdate",
-          this.handleSignalUpdate
-        );
+        addEventListener(this.key, "signalUpdate", this.handleSignalUpdate);
+        addEventListener(this.key, "propsChange", this.handlePropsChange);
       }
 
       handleSignalUpdate({ detail: { id, path } }) {
-        if (
-          instances[this.getAttribute("key")].signalAccess?.[id]?.includes(path)
-        ) {
-          render(this, component);
+        if (instances[this.key].signalAccess?.[id]?.includes(path)) {
+          render(this.key, component);
         }
       }
 
       handlePropsChange({ detail: { key } }) {
-        if (key === this.getAttribute("key")) {
-          render(this, component);
+        if (key === this.key) {
+          render(this.key, component);
         }
       }
     };
@@ -122,20 +190,18 @@ function parseComponents(html, components) {
     define(componentName, components);
     componentNames.push(componentName);
 
-    // TODO: tighten up the parsing
+    const marker = "<!-- HLX_NODE_KEY -->";
 
     parsed = parsed
       .split("")
       .toSpliced(
         match.index - ogHtmlLength,
         tag.length,
-        tag
-          .split(componentName)
-          .join(
-            !tag.includes(`key="`)
-              ? `${componentName} key="HLX_NODE_KEY" `
-              : componentName
-          ) + (tag.endsWith("/>") ? `</${componentName}>` : "")
+        (parsed.slice(0, match.index - ogHtmlLength).endsWith(marker)
+          ? ""
+          : marker) +
+          tag +
+          (tag.endsWith("/>") ? `</${componentName}>` : "")
       )
       .join("");
   });
@@ -160,7 +226,7 @@ function getTemplateBuilder(
     const templateChildren = children.length ? children : defaultChildren;
     const fragments = strings || defaultStrings;
 
-    const childNodes = templateChildren.flatMap((child, i) => {
+    const childNodes = templateChildren.flatMap((child) => {
       if (typeof child === "function") {
         return { handler: child };
       } else if (isPrimitive(child)) {
@@ -182,8 +248,6 @@ function getTemplateBuilder(
             return fragment;
           }
 
-          // TODO: tighten up the parsing
-
           const lastTagStart = result
             .split("")
             .findLastIndex((char) => char === "<");
@@ -192,13 +256,6 @@ function getTemplateBuilder(
             lastTagStart >
             result.split("").findLastIndex((char) => char === ">")
           ) {
-            const lastTagNameEnd =
-              lastTagStart +
-              result
-                .slice(lastTagStart)
-                .split("")
-                .findIndex((char) => char === " ");
-
             const isAttribute = result.endsWith("=");
             const isProps =
               result.endsWith("...") && isObject(childNodes[i - 1]);
@@ -218,12 +275,12 @@ function getTemplateBuilder(
               };
             }
 
+            const marker = "<!-- HLX_NODE_KEY -->";
+
             return (
-              (result.slice(lastTagStart).includes(`key="`)
-                ? result
-                : result.slice(0, lastTagNameEnd) +
-                  ' key="HLX_NODE_KEY" ' +
-                  result.slice(lastTagNameEnd)) +
+              result.slice(0, lastTagStart) +
+              (result.slice(0, lastTagStart).endsWith(marker) ? "" : marker) +
+              result.slice(lastTagStart) +
               (isAttribute ? '"HLX_ATTR"' : isProps ? "HLX_PROPS" : "") +
               fragment
             );
@@ -296,8 +353,6 @@ function fillTemplate(node, key = "", parents = []) {
   matches.forEach((match) => {
     switch (match[0]) {
       case "HLX_SLOT":
-        // TODO: it's still possible for these to collide with the keys of
-        // array items in other arrays at the same level in the tree
         const assignedChildKey = node.children[slotIndex].key
           ? "key-" + node.children[slotIndex].key
           : undefined;
@@ -315,7 +370,7 @@ function fillTemplate(node, key = "", parents = []) {
         childKeys.push(unprefixedKey);
         node.html +=
           template.slice(charIndex, match.index) +
-          `<hlx.fragment key="${prefixedKey}">HLX_CHILD_${prefixedKey}</hlx.fragment>`;
+          `<!-- ${prefixedKey} -->HLX_CHILD_${prefixedKey}<!-- ${prefixedKey} -->`;
         charIndex = match.index + "HLX_SLOT".length;
         slotIndex++;
 
@@ -404,9 +459,6 @@ function fillTemplate(node, key = "", parents = []) {
   return node;
 }
 
-let newSignals = [];
-let currentInstanceSignals = [];
-
 function makeDeepSignalProxy(value, path, signalId) {
   const proxy = new Proxy(value, {
     get(target, prop) {
@@ -482,9 +534,13 @@ export function useSignal(initialValue) {
   return signal.proxy;
 }
 
-// TODO: handle arrays?
 function getDomMutations(prev, next, mutations = []) {
-  const element = document.querySelector(`[key="${next.key}"]`);
+  const element = document.evaluate(
+    `//comment()[contains(string(), " ${next.key} ")]`,
+    document,
+    null,
+    XPathResult.FIRST_ORDERED_NODE_TYPE
+  ).singleNodeValue?.nextSibling;
 
   if (next.attribute && prev.html !== next.html) {
     element.setAttribute(next.name, next.html);
@@ -499,11 +555,13 @@ function getDomMutations(prev, next, mutations = []) {
     }
   } else if (!next.attribute && next.primitive && prev.html !== next.html) {
     mutations.push(() => {
-      element.textContent = next.html;
+      !prev.primitive && cleanupChildren(next.key);
+      setText(next.key, next.html);
     });
   } else if (prev.template !== next.template) {
     mutations.push(() => {
-      element.innerHTML = next.html;
+      cleanupChildren(next.key);
+      setHtml(next.key, next.html);
     });
   } else {
     next.children?.forEach((child, i) => {
@@ -518,12 +576,26 @@ function getDomMutations(prev, next, mutations = []) {
 }
 
 function render(destination, component) {
-  const destinationKey = destination.getAttribute("key") || getId("fwc");
-  destination.setAttribute("key", destinationKey);
+  const destinationKey =
+    typeof destination === "string" ? destination : findElementKey(destination);
 
-  if (!instances[destinationKey] && destination.innerHTML) {
+  const isFirstRender = !instances[destinationKey];
+
+  const element =
+    destination instanceof Element
+      ? destination
+      : isFirstRender
+      ? document.evaluate(
+          `//comment()[contains(string(), " ${destinationKey} ")]`,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE
+        ).singleNodeValue?.nextSibling
+      : undefined;
+
+  if (isFirstRender && element.innerHTML) {
     propsByNodeKey[destinationKey] ||= {};
-    propsByNodeKey[destinationKey].children = destination.innerHTML;
+    propsByNodeKey[destinationKey].children = element.innerHTML;
   }
 
   instances[destinationKey] ||= {
@@ -536,7 +608,7 @@ function render(destination, component) {
 
   const results = fillTemplate(component(propsByNodeKey[destinationKey]));
 
-  if (instances[destinationKey].prevTemplate) {
+  if (!isFirstRender) {
     getDomMutations(instances[destinationKey].prevTemplate, results).forEach(
       (mutation) => mutation()
     );
@@ -557,7 +629,9 @@ function render(destination, component) {
       }
     );
   } else {
-    destination.innerHTML = results.html;
+    element.innerHTML = results.html;
+    element.after(document.createComment(` ${destinationKey} `));
+    element.replaceWith(...element.childNodes);
   }
 
   instances[destinationKey].prevTemplate = results;
@@ -582,8 +656,14 @@ export function createRoot(domNode, components) {
 
   return {
     render(application) {
-      const destinationKey = root.getAttribute("key") || getId("hlx");
-      root.setAttribute("key", destinationKey);
+      const destinationKey = "hlx";
+      const destination = document.createElement("div");
+
+      domNode.replaceChildren(
+        document.createComment(` ${destinationKey} `),
+        destination,
+        document.createComment(` ${destinationKey} `)
+      );
 
       // Handle events
       document.addEventListener("wrappedEvent", (event) => {
@@ -595,12 +675,12 @@ export function createRoot(domNode, components) {
         "signalUpdate",
         ({ detail: { id, path } }) => {
           if (instances[destinationKey].signalAccess?.[id]?.includes(path)) {
-            render(root, application);
+            render(destinationKey, application);
           }
         }
       );
 
-      render(domNode, application);
+      render(destination, application);
     },
   };
 }
