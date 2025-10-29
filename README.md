@@ -38,9 +38,9 @@ And in `index.html` add:
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">loading...</div>
   </body>
 </html>
 ```
 
-Finally, run `npx serve .` and you're done!
+Run `npx serve .` and visit your new Helix app at `localhost:3000`.

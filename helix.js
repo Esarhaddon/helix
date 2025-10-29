@@ -16,6 +16,10 @@ const propsByNodeKey = {};
 const propsByParentNodeKey = {};
 const previousPropsByNodeKey = {};
 
+// DEV:
+// - build the data structure
+// - parse it for rendering
+
 let currentInstanceKey;
 let currentInstanceSignalIndex = 0;
 
