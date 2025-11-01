@@ -220,6 +220,71 @@ function parseComponents(html, components) {
   return parsed;
 }
 
+// Call it getTemplateBuilder?
+function getTemplateBuilder_new(key, defaultStrings, ...defaultChildren) {
+  return (strings, ...children) => {
+    const fragmentChildren = children || defaultChildren;
+    const fragmentStrings = strings || defaultStrings;
+
+    return {
+      _isTemplateNode: true,
+      assignedKey: key,
+      fragments: fragmentStrings.flatMap((string, i) =>
+        fragmentChildren[i] ? [string, fragmentChildren] : string
+      ),
+    };
+  };
+}
+
+// DEV: should this work in place?
+// - fillTemplate?
+function fillTemplate_new(
+  value, // DEV: this is either going to be an array of template nodes or a single template node
+  // - actually, it's always going to be a single template node?
+  key
+  // parent, // DEV: no need for a descendant index?
+  // // DEV: should not be incremented if a key has been provided
+  // siblingIndex
+) {
+  value.key = key;
+  // DEV: parse and transform each string and non-template node fragment,
+  // recurse into single template nodes and arrays of template nodes
+  // - these would need to be wrapped in identifiers
+  // - could this actually end up being a lot simpler than what you had before?
+  // - maybe just add a addHtml fn?
+  value.parsed = value.fragments;
+
+  // DEV: a parsed string fragment might look something like this:
+  const parsed = {
+    identifier: key + "." + 0,
+    type: "html",
+    value: "<div onclick=",
+  };
+
+  // DEV: is it possible to parse the string fragments at the same time that you
+  // recurse?
+  // - or maybe the move is to massage them into an easily parsable format so
+  //   you can call getHtml for a node later?
+
+  // if (value === null || value === undefined || value === "string") {
+  //   // DEV: actually, you don't need this branch?
+  //   // DEV: we're dealing with some kind of primitive value
+  // } else if (value._isTemplateNode) {
+  // value.key = (parent?.key || "") + (value.key ? "key_" + value.key : "");
+  // value.key = parent.key + "." + (value.assignedKey || siblingIndex); // DEV: maybe the key should just be assigned by the caller?
+  // value.key = key;
+  // value.parsed = value.fragments; // DEV: parse and transform each string and non-template node fragment, recurse into single template nodes and arrays of template nodes
+
+  // DEV: do some recursion
+  // DEV: fill keys here
+  // } else if (Array.isArray(value)) {
+  //   // DEV: you also don't need this branch?
+  //   // DEV: should be an array of tree nodes, otherwise throw error
+  // }
+}
+
+function getHtml(templateNode) {}
+
 function getTemplateBuilder(
   components,
   key,

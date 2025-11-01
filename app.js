@@ -70,6 +70,7 @@ export function ThisShouldNotBreak() {
 }
 
 export function App() {
+  console.log("rendering App...");
   const test = useSignal({ the: { count: 0 } });
   const formState = useSignal({});
 
@@ -78,6 +79,7 @@ export function App() {
       count: hlx`<span>${test.value.the.count}</span>`,
     }}
     />
+    <div>and again: ${test.value.the.count}</div>
     <button onclick=${() => test.value.the.count++}>inc</button>
     <Counter />
     <input
