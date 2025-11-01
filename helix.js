@@ -239,14 +239,6 @@ function getTemplateBuilder_new(key, defaultStrings, ...defaultChildren) {
   };
 }
 
-// DEV: shouldn't be too hard to test this
-
-// DEV: maybe you're not thinking about this quite the right way?
-
-// DEV: hmm, some in depth explanation might be helpful
-
-// DEV: pretty sure you're doing extra work for closing tags
-
 function parseTemplateInPlaceV2(template) {
   let isTag = false;
   let isAttr = false;
@@ -257,9 +249,12 @@ function parseTemplateInPlaceV2(template) {
     let unparsedFragment = fragment;
     while (unparsedFragment.length) {
       let controlCharIndex = unparsedFragment.split("").findIndex(
-        (char) =>
+        (char, i) =>
           // Tag start
-          (!isTag && !isAttr && char === "<") || // DEV: should be able to ignore closing tags
+          (!isTag &&
+            !isAttr &&
+            char === "<" &&
+            unparsedFragment[i + 1] !== "/") ||
           // Attribute start or end
           (isTag && char === '"') ||
           // Tag end
@@ -270,16 +265,18 @@ function parseTemplateInPlaceV2(template) {
         if (phrases[0]) {
           phrases[phrases.length - 1].value += unparsedFragment;
         } else {
-          phrases.push({ isAttr, isTag, value: unparsedFragment });
+          phrases.push({
+            isAttr,
+            isTag,
+            value: unparsedFragment,
+            isTagContinued: isTag,
+          });
         }
 
         break;
       }
 
       let controlChar = unparsedFragment[controlCharIndex];
-
-      console.log({ controlChar });
-      console.log({ controlCharIndex });
 
       switch (controlChar) {
         case "<":
@@ -296,13 +293,13 @@ function parseTemplateInPlaceV2(template) {
             }
           }
 
-          phrases.push({ tagStart: true, value: "<" });
+          phrases.push({ tagStart: true, value: "<", isTagContinued: true });
 
           isTag = true;
 
           break;
 
-        // DEV: the conditionals in the below statemens could probably be simpler
+        // DEV: the conditionals in the below cases could probably be simpler
         case '"':
           if (controlCharIndex !== 0) {
             if (phrases[0]) {
@@ -314,13 +311,14 @@ function parseTemplateInPlaceV2(template) {
             } else {
               phrases.push({
                 value: unparsedFragment.slice(0, controlCharIndex + 1),
+                isTagContinued: true,
               });
             }
           } else {
             if (phrases[0]) {
               phrases[phrases.length - 1].value += '"';
             } else {
-              phrases.push({ value: '"' });
+              phrases.push({ value: '"', isTagContinued: true });
             }
           }
 
@@ -330,6 +328,7 @@ function parseTemplateInPlaceV2(template) {
         case ">":
           if (controlCharIndex !== 0) {
             if (phrases[0]) {
+              phrases[phrases.length - 1].isTagContinued = false;
               phrases[phrases.length - 1].value += unparsedFragment.slice(
                 0,
                 controlCharIndex + 1
@@ -341,6 +340,7 @@ function parseTemplateInPlaceV2(template) {
             }
           } else {
             if (phrases[0]) {
+              phrases[phrases.length - 1].isTagContinued = false;
               phrases[phrases.length - 1].value += ">";
             } else {
               phrases.push({ value: ">" });
@@ -355,170 +355,15 @@ function parseTemplateInPlaceV2(template) {
       unparsedFragment = unparsedFragment.slice(controlCharIndex + 1);
     }
 
-    return result.concat(phrases);
-  }, []);
-}
-
-// DEV: at some point you'll need to handle escape chars
-function parseTemplateInPlace(template) {
-  // DEV: naming?
-  let isTag = false;
-  let isAttr = false;
-
-  template.parsed = template.htmlFragments.reduce((result, fragment) => {
-    let phrases = [];
-
-    let unparsedFragment = fragment;
-    while (unparsedFragment.length) {
-      let controlCharIndex = unparsedFragment.split("").findIndex(
-        (char, i) =>
-          // Attribute start or end
-          (isTag && char === '"') ||
-          // Tag end
-          (isTag && !isAttr && char === ">") ||
-          // Tag start
-          (!isTag && !isAttr && char === "<")
-      );
-
-      let controlChar = unparsedFragment[controlCharIndex];
-
-      // DEV: very interesting and complicated
-
-      console.log({ controlChar });
-      console.log({ controlCharIndex });
-
-      if (controlCharIndex < 0) {
-        phrases.push({ value: unparsedFragment, isTag, isAttr });
-      }
-      // DEV: does seem like these two branches could be combined, but don't try
-      // that rn
-      else if (controlCharIndex === 0) {
-        switch (controlChar) {
-          // DEV: this first one could only be the result of a syntax error?
-          case '"':
-            if (isAttr && phrases[0]) {
-              phrases[phrases.length - 1].value += '"';
-            } else {
-              phrases.push({ value: '"', isAttr: true, isTag: true });
-            }
-
-            isAttr = !isAttr;
-
-            break;
-          case ">":
-            if (phrases[0]) {
-              phrases[phrases.length - 1].value += ">";
-            } else {
-              phrases.push({ value: ">", isAttr: false, isTag: true });
-            }
-
-            isTag = false;
-
-            break;
-          case "<":
-            phrases.push({ value: "<", isAttr: false, isTag: true });
-
-            isTag = true;
-
-            break;
-        }
-      } else {
-        switch (controlChar) {
-          case '"':
-            console.log("here");
-            if (isAttr && phrases[0]) {
-              phrases[phrases.length - 1].value += unparsedFragment.slice(
-                0,
-                controlCharIndex + 1
-              );
-              console.log(JSON.stringify(phrases, null, 2));
-            } else if (isAttr) {
-              // DEV: hmm, would only get here as the result of a syntax error
-              phrases.push({
-                isAttr: true,
-                isTag: true,
-                value: unparsedFragment.slice(0, controlCharIndex + 1),
-              });
-            } else {
-              phrases = phrases.concat([
-                {
-                  isTag: true,
-                  isAttr: false,
-                  value: unparsedFragment.slice(0, controlCharIndex),
-                },
-                {
-                  isAttr: true,
-                  isTag: true,
-                  value: '"',
-                },
-              ]);
-            }
-
-            isAttr = !isAttr;
-            break;
-          case ">":
-            if (phrases[0]) {
-              // DEV: does it actually make sense to concatenate in places like this?
-              phrases[phrases.length - 1].value += unparsedFragment.slice(
-                0,
-                controlCharIndex + 1
-              );
-            } else {
-              phrases.push({
-                isTag: true,
-                isAttr: false,
-                value: unparsedFragment.slice(0, controlCharIndex + 1),
-              });
-            }
-
-            isTag = false;
-            break;
-          case "<":
-            if (phrases[0]) {
-              phrases[phrases.length - 1].value += unparsedFragment.slice(
-                0,
-                controlCharIndex
-              );
-              phrases.push({
-                isTag: true,
-                isAttr: false,
-                value: "<",
-              });
-            } else {
-              // DEV: create two new phrases
-              phrases = phrases.concat([
-                {
-                  isTag: false,
-                  isAttr: false,
-                  value: unparsedFragment.slice(0, controlCharIndex),
-                },
-                {
-                  isTag: true,
-                  isAttr: false,
-                  value: "<",
-                },
-              ]);
-            }
-
-            isTag = true;
-            break;
-        }
-      }
-
-      unparsedFragment =
-        controlCharIndex < 0
-          ? ""
-          : unparsedFragment.slice(controlCharIndex + 1);
-    }
-
-    return result.concat(phrases);
+    return result.concat([phrases]);
   }, []);
 }
 
 const test = getTemplateBuilder_new();
 
 const template = test`
-  <div id="my-div"><Component ${{}} />hello world<span spanid="my-span<<><'" onclick=${() => {}}></span></div>
+  this is just a string
+  <div id="my-div"><Component ${{}} id="<_adfa>k<>" ${{}} />hello world<span spanid="my-span<<><'" onclick=${() => {}}></span><input oninput=${() => {}} /></div><div>hello world</div>
 `;
 
 // const template = test`<div>hello world</div>`;
