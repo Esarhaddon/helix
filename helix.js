@@ -220,8 +220,7 @@ function parseComponents(html, components) {
   return parsed;
 }
 
-// Call it getTemplateBuilder?
-function getTemplateBuilder_new(key, defaultStrings, ...defaultChildren) {
+function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   return (strings, ...children) => {
     // DEV: one of these is read only?
     const htmlFragments = [...strings] || [...defaultStrings];
@@ -250,14 +249,14 @@ function parseTemplateInPlaceV2(template) {
     while (unparsedFragment.length) {
       let controlCharIndex = unparsedFragment.split("").findIndex(
         (char, i) =>
-          // Tag start
+          // Opening tag start
           (!isTag &&
             !isAttr &&
             char === "<" &&
             unparsedFragment[i + 1] !== "/") ||
           // Attribute start or end
           (isTag && char === '"') ||
-          // Tag end
+          // Opening tag end
           (isTag && !isAttr && char === ">")
       );
 
@@ -298,53 +297,33 @@ function parseTemplateInPlaceV2(template) {
           isTag = true;
 
           break;
-
-        // DEV: the conditionals in the below cases could probably be simpler
         case '"':
-          if (controlCharIndex !== 0) {
-            if (phrases[0]) {
-              phrases[phrases.length - 1].value += unparsedFragment.slice(
-                0,
-                controlCharIndex + 1
-              );
-              console.log(JSON.stringify(phrases, null, 2));
-            } else {
-              phrases.push({
-                value: unparsedFragment.slice(0, controlCharIndex + 1),
-                isTagContinued: true,
-              });
-            }
+          if (phrases[0]) {
+            phrases[phrases.length - 1].value += unparsedFragment.slice(
+              0,
+              controlCharIndex + 1
+            );
           } else {
-            if (phrases[0]) {
-              phrases[phrases.length - 1].value += '"';
-            } else {
-              phrases.push({ value: '"', isTagContinued: true });
-            }
+            phrases.push({
+              value: unparsedFragment.slice(0, controlCharIndex + 1),
+              isTagContinued: true,
+            });
           }
 
           isAttr = !isAttr;
 
           break;
         case ">":
-          if (controlCharIndex !== 0) {
-            if (phrases[0]) {
-              phrases[phrases.length - 1].isTagContinued = false;
-              phrases[phrases.length - 1].value += unparsedFragment.slice(
-                0,
-                controlCharIndex + 1
-              );
-            } else {
-              phrases.push({
-                value: unparsedFragment.slice(0, controlCharIndex + 1),
-              });
-            }
+          if (phrases[0]) {
+            phrases[phrases.length - 1].isTagContinued = false;
+            phrases[phrases.length - 1].value += unparsedFragment.slice(
+              0,
+              controlCharIndex + 1
+            );
           } else {
-            if (phrases[0]) {
-              phrases[phrases.length - 1].isTagContinued = false;
-              phrases[phrases.length - 1].value += ">";
-            } else {
-              phrases.push({ value: ">" });
-            }
+            phrases.push({
+              value: unparsedFragment.slice(0, controlCharIndex + 1),
+            });
           }
 
           isTag = false;
@@ -359,14 +338,12 @@ function parseTemplateInPlaceV2(template) {
   }, []);
 }
 
-const test = getTemplateBuilder_new();
+const test = getTemplateBuilderV2();
 
 const template = test`
   this is just a string
   <div id="my-div"><Component ${{}} id="<_adfa>k<>" ${{}} />hello world<span spanid="my-span<<><'" onclick=${() => {}}></span><input oninput=${() => {}} /></div><div>hello world</div>
 `;
-
-// const template = test`<div>hello world</div>`;
 
 console.log(JSON.stringify(template, null, 2));
 
