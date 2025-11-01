@@ -70,7 +70,6 @@ export function ThisShouldNotBreak() {
 }
 
 export function App() {
-  console.log("rendering App...");
   const test = useSignal({ the: { count: 0 } });
   const formState = useSignal({});
 

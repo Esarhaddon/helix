@@ -223,18 +223,105 @@ function parseComponents(html, components) {
 // Call it getTemplateBuilder?
 function getTemplateBuilder_new(key, defaultStrings, ...defaultChildren) {
   return (strings, ...children) => {
-    const fragmentChildren = children || defaultChildren;
-    const fragmentStrings = strings || defaultStrings;
+    // DEV: one of these is read only?
+    const htmlFragments = [...strings] || [...defaultStrings];
+
+    htmlFragments[0] = htmlFragments[0].trimLeft();
+    htmlFragments[htmlFragments.length - 1] =
+      htmlFragments[htmlFragments.length - 1].trimRight();
 
     return {
       _isTemplateNode: true,
       assignedKey: key,
-      fragments: fragmentStrings.flatMap((string, i) =>
-        fragmentChildren[i] ? [string, fragmentChildren] : string
-      ),
+      htmlFragments,
+      templateChildren: children || defaultChildren,
     };
   };
 }
+
+// DEV: shouldn't be too hard to test this
+
+// DEV: maybe you're not thinking about this quite the right way?
+
+// DEV: at some point you'll need to handle escape chars
+function parseTemplateInPlace(template) {
+  // DEV: should these have better names?
+  let isTag = false;
+  let isAttr = false;
+
+  template.parsed = template.htmlFragments.reduce((result, fragment) => {
+    // DEV: there might be a more effici
+    const fragmentResults = [];
+
+    let unparsedFragment = fragment;
+    while (unparsedFragment.length) {
+      let controlCharIndex = unparsedFragment.split("").findIndex(
+        (char, i) =>
+          // Attribute start or end
+          (isTag && char === '"') ||
+          (isTag && !isAttr && char === ">") ||
+          // Tag start
+          (!isTag && !isAttr && char === "<")
+      );
+
+      let controlChar = unparsedFragment[controlCharIndex];
+
+      // DEV: very interesting and complicated
+
+      if (controlCharIndex < 0) {
+        console.log("index less than zero");
+        fragmentResults.push({ value: unparsedFragment, isTag, isAttr });
+      } else {
+        console.log({ controlCharsIndex: controlCharIndex });
+        console.log({ controlChars: controlChar });
+
+        switch (controlChar) {
+          case '"':
+            // DEV: if opening, this should start a new phrase, if closing this
+            // should end the current phrase
+
+            isAttr = !isAttr;
+            break;
+          case ">":
+            // DEV: this should end the current phrase
+
+            isTag = false;
+            break;
+          case "<":
+            // DEV: this should start a new phrase
+
+            isTag = true;
+            break;
+        }
+
+        fragmentResults.push({
+          isAttr,
+          isTag,
+          value: unparsedFragment.slice(0, controlCharIndex + 1),
+        });
+      }
+
+      unparsedFragment =
+        controlCharIndex < 0
+          ? ""
+          : unparsedFragment.slice(controlCharIndex + 1);
+    }
+
+    return result.concat(fragmentResults);
+  }, []);
+}
+
+const test = getTemplateBuilder_new();
+
+const template = test`
+  <div onclick=${() => {}}>hello world<span id="excl">!</span></div>
+`;
+
+console.log(JSON.stringify(template, null, 2));
+
+const testResult = parseTemplateInPlace(template);
+
+console.log(JSON.stringify(template, null, 2));
 
 // DEV: should this work in place?
 // - fillTemplate?
