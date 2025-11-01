@@ -247,6 +247,108 @@ function getTemplateBuilder_new(key, defaultStrings, ...defaultChildren) {
 
 // DEV: pretty sure you're doing extra work for closing tags
 
+function parseTemplateInPlaceV2(template) {
+  let isTag = false;
+  let isAttr = false;
+
+  template.parsed = template.htmlFragments.reduce((result, fragment) => {
+    let phrases = [];
+
+    let unparsedFragment = fragment;
+    while (unparsedFragment.length) {
+      let controlCharIndex = unparsedFragment.split("").findIndex(
+        (char) =>
+          // Tag start
+          (!isTag && !isAttr && char === "<") || // DEV: should be able to ignore closing tags
+          // Attribute start or end
+          (isTag && char === '"') ||
+          // Tag end
+          (isTag && !isAttr && char === ">")
+      );
+
+      if (controlCharIndex < 0) {
+        if (phrases[0]) {
+          phrases[phrases.length - 1].value += unparsedFragment;
+        } else {
+          phrases.push({ isAttr, isTag, value: unparsedFragment });
+        }
+
+        break;
+      }
+
+      let controlChar = unparsedFragment[controlCharIndex];
+
+      console.log({ controlChar });
+      console.log({ controlCharIndex });
+
+      switch (controlChar) {
+        case "<":
+          if (controlCharIndex !== 0) {
+            if (phrases[0]) {
+              phrases[phrases.length - 1].value += unparsedFragment.slice(
+                0,
+                controlCharIndex
+              );
+            } else {
+              phrases.push({
+                value: unparsedFragment.slice(0, controlCharIndex),
+              });
+            }
+          }
+
+          phrases.push({ tagStart: true, value: "<" });
+
+          isTag = true;
+
+          break;
+        case '"':
+          if (controlCharIndex !== 0) {
+            if (phrases[0]) {
+              phrases[phrases.length - 1].value += unparsedFragment.slice(
+                0,
+                controlCharIndex + 1
+              );
+              console.log(JSON.stringify(phrases, null, 2));
+            } else {
+              phrases.push({
+                value: unparsedFragment.slice(0, controlCharIndex + 1),
+              });
+            }
+          } else {
+            phrases.push({ value: '"' });
+          }
+
+          isAttr = !isAttr;
+
+          break;
+        case ">":
+          if (controlCharIndex !== 0) {
+            if (phrases[0]) {
+              phrases[phrases.length - 1].value += unparsedFragment.slice(
+                0,
+                controlCharIndex + 1
+              );
+            } else {
+              phrases.push({
+                value: unparsedFragment.slice(0, controlCharIndex + 1),
+              });
+            }
+          } else {
+            phrases.push({ value: ">" });
+          }
+
+          isTag = false;
+
+          break;
+      }
+
+      unparsedFragment = unparsedFragment.slice(controlCharIndex + 1);
+    }
+
+    return result.concat(phrases);
+  }, []);
+}
+
 // DEV: at some point you'll need to handle escape chars
 function parseTemplateInPlace(template) {
   // DEV: naming?
@@ -409,9 +511,11 @@ const template = test`
   <div id="my-div"><Component ${{}} />hello world<span spanid="my-span<<><'" onclick=${() => {}}></span></div>
 `;
 
+// const template = test`<div>hello world</div>`;
+
 console.log(JSON.stringify(template, null, 2));
 
-parseTemplateInPlace(template);
+parseTemplateInPlaceV2(template);
 
 console.log(JSON.stringify(template, null, 2));
 
