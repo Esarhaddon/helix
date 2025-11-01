@@ -243,15 +243,18 @@ function getTemplateBuilder_new(key, defaultStrings, ...defaultChildren) {
 
 // DEV: maybe you're not thinking about this quite the right way?
 
+// DEV: hmm, some in depth explanation might be helpful
+
+// DEV: pretty sure you're doing extra work for closing tags
+
 // DEV: at some point you'll need to handle escape chars
 function parseTemplateInPlace(template) {
-  // DEV: should these have better names?
+  // DEV: naming?
   let isTag = false;
   let isAttr = false;
 
   template.parsed = template.htmlFragments.reduce((result, fragment) => {
-    // DEV: there might be a more effici
-    const fragmentResults = [];
+    let phrases = [];
 
     let unparsedFragment = fragment;
     while (unparsedFragment.length) {
@@ -259,6 +262,7 @@ function parseTemplateInPlace(template) {
         (char, i) =>
           // Attribute start or end
           (isTag && char === '"') ||
+          // Tag end
           (isTag && !isAttr && char === ">") ||
           // Tag start
           (!isTag && !isAttr && char === "<")
@@ -268,37 +272,125 @@ function parseTemplateInPlace(template) {
 
       // DEV: very interesting and complicated
 
-      if (controlCharIndex < 0) {
-        console.log("index less than zero");
-        fragmentResults.push({ value: unparsedFragment, isTag, isAttr });
-      } else {
-        console.log({ controlCharsIndex: controlCharIndex });
-        console.log({ controlChars: controlChar });
+      console.log({ controlChar });
+      console.log({ controlCharIndex });
 
+      if (controlCharIndex < 0) {
+        phrases.push({ value: unparsedFragment, isTag, isAttr });
+      }
+      // DEV: does seem like these two branches could be combined, but don't try
+      // that rn
+      else if (controlCharIndex === 0) {
+        switch (controlChar) {
+          // DEV: this first one could only be the result of a syntax error?
+          case '"':
+            if (isAttr && phrases[0]) {
+              phrases[phrases.length - 1].value += '"';
+            } else {
+              phrases.push({ value: '"', isAttr: true, isTag: true });
+            }
+
+            isAttr = !isAttr;
+
+            break;
+          case ">":
+            if (phrases[0]) {
+              phrases[phrases.length - 1].value += ">";
+            } else {
+              phrases.push({ value: ">", isAttr: false, isTag: true });
+            }
+
+            isTag = false;
+
+            break;
+          case "<":
+            phrases.push({ value: "<", isAttr: false, isTag: true });
+
+            isTag = true;
+
+            break;
+        }
+      } else {
         switch (controlChar) {
           case '"':
-            // DEV: if opening, this should start a new phrase, if closing this
-            // should end the current phrase
+            console.log("here");
+            if (isAttr && phrases[0]) {
+              phrases[phrases.length - 1].value += unparsedFragment.slice(
+                0,
+                controlCharIndex + 1
+              );
+              console.log(JSON.stringify(phrases, null, 2));
+            } else if (isAttr) {
+              // DEV: hmm, would only get here as the result of a syntax error
+              phrases.push({
+                isAttr: true,
+                isTag: true,
+                value: unparsedFragment.slice(0, controlCharIndex + 1),
+              });
+            } else {
+              phrases = phrases.concat([
+                {
+                  isTag: true,
+                  isAttr: false,
+                  value: unparsedFragment.slice(0, controlCharIndex),
+                },
+                {
+                  isAttr: true,
+                  isTag: true,
+                  value: '"',
+                },
+              ]);
+            }
 
             isAttr = !isAttr;
             break;
           case ">":
-            // DEV: this should end the current phrase
+            if (phrases[0]) {
+              // DEV: does it actually make sense to concatenate in places like this?
+              phrases[phrases.length - 1].value += unparsedFragment.slice(
+                0,
+                controlCharIndex + 1
+              );
+            } else {
+              phrases.push({
+                isTag: true,
+                isAttr: false,
+                value: unparsedFragment.slice(0, controlCharIndex + 1),
+              });
+            }
 
             isTag = false;
             break;
           case "<":
-            // DEV: this should start a new phrase
+            if (phrases[0]) {
+              phrases[phrases.length - 1].value += unparsedFragment.slice(
+                0,
+                controlCharIndex
+              );
+              phrases.push({
+                isTag: true,
+                isAttr: false,
+                value: "<",
+              });
+            } else {
+              // DEV: create two new phrases
+              phrases = phrases.concat([
+                {
+                  isTag: false,
+                  isAttr: false,
+                  value: unparsedFragment.slice(0, controlCharIndex),
+                },
+                {
+                  isTag: true,
+                  isAttr: false,
+                  value: "<",
+                },
+              ]);
+            }
 
             isTag = true;
             break;
         }
-
-        fragmentResults.push({
-          isAttr,
-          isTag,
-          value: unparsedFragment.slice(0, controlCharIndex + 1),
-        });
       }
 
       unparsedFragment =
@@ -307,68 +399,21 @@ function parseTemplateInPlace(template) {
           : unparsedFragment.slice(controlCharIndex + 1);
     }
 
-    return result.concat(fragmentResults);
+    return result.concat(phrases);
   }, []);
 }
 
 const test = getTemplateBuilder_new();
 
 const template = test`
-  <div onclick=${() => {}}>hello world<span id="excl">!</span></div>
+  <div id="my-div"><Component ${{}} />hello world<span spanid="my-span<<><'" onclick=${() => {}}></span></div>
 `;
 
 console.log(JSON.stringify(template, null, 2));
 
-const testResult = parseTemplateInPlace(template);
+parseTemplateInPlace(template);
 
 console.log(JSON.stringify(template, null, 2));
-
-// DEV: should this work in place?
-// - fillTemplate?
-function fillTemplate_new(
-  value, // DEV: this is either going to be an array of template nodes or a single template node
-  // - actually, it's always going to be a single template node?
-  key
-  // parent, // DEV: no need for a descendant index?
-  // // DEV: should not be incremented if a key has been provided
-  // siblingIndex
-) {
-  value.key = key;
-  // DEV: parse and transform each string and non-template node fragment,
-  // recurse into single template nodes and arrays of template nodes
-  // - these would need to be wrapped in identifiers
-  // - could this actually end up being a lot simpler than what you had before?
-  // - maybe just add a addHtml fn?
-  value.parsed = value.fragments;
-
-  // DEV: a parsed string fragment might look something like this:
-  const parsed = {
-    identifier: key + "." + 0,
-    type: "html",
-    value: "<div onclick=",
-  };
-
-  // DEV: is it possible to parse the string fragments at the same time that you
-  // recurse?
-  // - or maybe the move is to massage them into an easily parsable format so
-  //   you can call getHtml for a node later?
-
-  // if (value === null || value === undefined || value === "string") {
-  //   // DEV: actually, you don't need this branch?
-  //   // DEV: we're dealing with some kind of primitive value
-  // } else if (value._isTemplateNode) {
-  // value.key = (parent?.key || "") + (value.key ? "key_" + value.key : "");
-  // value.key = parent.key + "." + (value.assignedKey || siblingIndex); // DEV: maybe the key should just be assigned by the caller?
-  // value.key = key;
-  // value.parsed = value.fragments; // DEV: parse and transform each string and non-template node fragment, recurse into single template nodes and arrays of template nodes
-
-  // DEV: do some recursion
-  // DEV: fill keys here
-  // } else if (Array.isArray(value)) {
-  //   // DEV: you also don't need this branch?
-  //   // DEV: should be an array of tree nodes, otherwise throw error
-  // }
-}
 
 function getHtml(templateNode) {}
 
