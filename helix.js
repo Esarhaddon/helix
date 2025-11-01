@@ -301,6 +301,8 @@ function parseTemplateInPlaceV2(template) {
           isTag = true;
 
           break;
+
+        // DEV: the conditionals in the below statemens could probably be simpler
         case '"':
           if (controlCharIndex !== 0) {
             if (phrases[0]) {
@@ -315,7 +317,11 @@ function parseTemplateInPlaceV2(template) {
               });
             }
           } else {
-            phrases.push({ value: '"' });
+            if (phrases[0]) {
+              phrases[phrases.length - 1].value += '"';
+            } else {
+              phrases.push({ value: '"' });
+            }
           }
 
           isAttr = !isAttr;
@@ -334,7 +340,11 @@ function parseTemplateInPlaceV2(template) {
               });
             }
           } else {
-            phrases.push({ value: ">" });
+            if (phrases[0]) {
+              phrases[phrases.length - 1].value += ">";
+            } else {
+              phrases.push({ value: ">" });
+            }
           }
 
           isTag = false;
