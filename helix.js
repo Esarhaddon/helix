@@ -223,7 +223,7 @@ function parseComponents(html, components) {
 function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   return (strings, ...children) => {
     // DEV: one of these is read only?
-    const htmlFragments = [...strings] || [...defaultStrings];
+    const htmlFragments = [...(strings || defaultStrings)];
 
     htmlFragments[0] = htmlFragments[0].trimLeft();
     htmlFragments[htmlFragments.length - 1] =
@@ -232,110 +232,124 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
     return {
       _isTemplateNode: true,
       assignedKey: key,
+      hash: htmlFragments.join("_"),
       htmlFragments,
       templateChildren: children || defaultChildren,
     };
   };
 }
 
+// DEV: one way to think about parsing Component children would be that you're
+// parsing/creating a template and then adding it the component's props
+// - might involve calling parseTemplateInPlace recursively?
+
 function parseTemplateInPlaceV2(template) {
   let isTag = false;
   let isAttr = false;
 
-  template.parsed = template.htmlFragments.reduce((result, fragment) => {
-    let phrases = [];
+  template.parsedHtmlFragments = template.htmlFragments.reduce(
+    (result, fragment) => {
+      let phrases = [];
 
-    let unparsedFragment = fragment;
-    while (unparsedFragment.length) {
-      let controlCharIndex = unparsedFragment.split("").findIndex(
-        (char, i) =>
-          // Opening tag start
-          (!isTag &&
-            !isAttr &&
-            char === "<" &&
-            unparsedFragment[i + 1] !== "/") ||
-          // Attribute start or end
-          (isTag && char === '"') ||
-          // Opening tag end
-          (isTag && !isAttr && char === ">")
-      );
+      // DEV: whether you drop web components now or not, you will need to do some
+      // extra work with opening and closing component tags
 
-      if (controlCharIndex < 0) {
-        if (phrases[0]) {
-          phrases[phrases.length - 1].value += unparsedFragment;
-        } else {
-          phrases.push({
-            isAttr,
-            isTag,
-            value: unparsedFragment,
-            isTagContinued: isTag,
-          });
+      let unparsedFragment = fragment;
+      while (unparsedFragment.length) {
+        let controlCharIndex = unparsedFragment.split("").findIndex(
+          (char, i) =>
+            // Opening tag start
+            (!isTag &&
+              !isAttr &&
+              char === "<" &&
+              unparsedFragment[i + 1] !== "/") ||
+            // Attribute start or end
+            (isTag && char === '"') ||
+            // Opening tag end
+            (isTag && !isAttr && char === ">")
+        );
+
+        if (controlCharIndex < 0) {
+          if (phrases[0]) {
+            phrases[phrases.length - 1].value += unparsedFragment;
+          } else {
+            phrases.push({
+              isAttr,
+              isTag,
+              value: unparsedFragment,
+              isTagContinued: isTag,
+            });
+          }
+
+          break;
         }
 
-        break;
-      }
+        let controlChar = unparsedFragment[controlCharIndex];
 
-      let controlChar = unparsedFragment[controlCharIndex];
+        switch (controlChar) {
+          case "<":
+            if (controlCharIndex !== 0) {
+              if (phrases[0]) {
+                phrases[phrases.length - 1].value += unparsedFragment.slice(
+                  0,
+                  controlCharIndex
+                );
+              } else {
+                phrases.push({
+                  value: unparsedFragment.slice(0, controlCharIndex),
+                });
+              }
+            }
 
-      switch (controlChar) {
-        case "<":
-          if (controlCharIndex !== 0) {
+            // DEV: this is the spot to deal with web components
+            phrases.push({ tagStart: true, value: "<", isTagContinued: true });
+
+            isTag = true;
+
+            break;
+
+          // DEV: these last two cases could be combind?
+          case '"':
             if (phrases[0]) {
               phrases[phrases.length - 1].value += unparsedFragment.slice(
                 0,
-                controlCharIndex
+                controlCharIndex + 1
               );
             } else {
               phrases.push({
-                value: unparsedFragment.slice(0, controlCharIndex),
+                value: unparsedFragment.slice(0, controlCharIndex + 1),
+                isTagContinued: true,
               });
             }
-          }
 
-          phrases.push({ tagStart: true, value: "<", isTagContinued: true });
+            isAttr = !isAttr;
 
-          isTag = true;
+            break;
+          case ">":
+            if (phrases[0]) {
+              phrases[phrases.length - 1].isTagContinued = false;
+              phrases[phrases.length - 1].value += unparsedFragment.slice(
+                0,
+                controlCharIndex + 1
+              );
+            } else {
+              phrases.push({
+                value: unparsedFragment.slice(0, controlCharIndex + 1),
+              });
+            }
 
-          break;
-        case '"':
-          if (phrases[0]) {
-            phrases[phrases.length - 1].value += unparsedFragment.slice(
-              0,
-              controlCharIndex + 1
-            );
-          } else {
-            phrases.push({
-              value: unparsedFragment.slice(0, controlCharIndex + 1),
-              isTagContinued: true,
-            });
-          }
+            isTag = false;
 
-          isAttr = !isAttr;
+            break;
+        }
 
-          break;
-        case ">":
-          if (phrases[0]) {
-            phrases[phrases.length - 1].isTagContinued = false;
-            phrases[phrases.length - 1].value += unparsedFragment.slice(
-              0,
-              controlCharIndex + 1
-            );
-          } else {
-            phrases.push({
-              value: unparsedFragment.slice(0, controlCharIndex + 1),
-            });
-          }
-
-          isTag = false;
-
-          break;
+        unparsedFragment = unparsedFragment.slice(controlCharIndex + 1);
       }
 
-      unparsedFragment = unparsedFragment.slice(controlCharIndex + 1);
-    }
-
-    return result.concat([phrases]);
-  }, []);
+      return result.concat([phrases]);
+    },
+    []
+  );
 }
 
 const test = getTemplateBuilderV2();
