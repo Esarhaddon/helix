@@ -334,6 +334,7 @@ function parseTemplateInPlaceV2(template) {
           case ">":
             if (phrases[0]) {
               phrases[phrases.length - 1].isTagContinued = false;
+              phrases[phrases.length - 1].tagStart = false;
               phrases[phrases.length - 1].value += unparsedFragment.slice(
                 0,
                 controlCharIndex + 1
