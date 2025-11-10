@@ -249,60 +249,79 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
 // - keep track of closting component tags and jump back to the previous
 //   reference when one component is closed
 
+// DEV: don't forget to handle self-closing component tags
+// - eventually would be nice to allow all self-closing tags
+
+const cache = {};
+
 function parseTemplateInPlaceV2(template) {
-  let isTag = false;
+  let isOpeningTag = false;
+  let isClosingTag = false;
+  let isComponent = false;
   let isAttr = false;
 
   template.parsedHtmlFragments = template.htmlFragments.reduce(
     (result, fragment) => {
-      let phrases = [];
+      const phrases = [];
+      const componentPhrasesStack = [];
 
       // DEV: whether you drop web components now or not, you will need to do some
       // extra work with opening and closing component tags
 
       let unparsedFragment = fragment;
       while (unparsedFragment.length) {
-        let controlCharIndex = unparsedFragment.split("").findIndex(
+        let controlCharsIndex = unparsedFragment.split("").findIndex(
           (char, i) =>
             // Opening tag start
-            (!isTag &&
+            (!isOpeningTag &&
               !isAttr &&
               char === "<" &&
               unparsedFragment[i + 1] !== "/") ||
             // Attribute start or end
-            (isTag && char === '"') ||
-            // Opening tag end
-            (isTag && !isAttr && char === ">")
+            (isOpeningTag && char === '"') ||
+            // DEV: this only matter if there's an open component tag
+
+            // Closing tag start
+            (!isOpeningTag &&
+              !isAttr &&
+              char === "<" &&
+              unparsedFragment[i + 1] === "/") ||
+            // Tag end
+            (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")
         );
 
-        if (controlCharIndex < 0) {
+        if (controlCharsIndex < 0) {
           if (phrases[0]) {
             phrases[phrases.length - 1].value += unparsedFragment;
           } else {
             phrases.push({
               isAttr,
-              isTag,
+              isTag: isOpeningTag,
               value: unparsedFragment,
-              isTagContinued: isTag,
+              isTagContinued: isOpeningTag,
             });
           }
 
           break;
         }
 
-        let controlChar = unparsedFragment[controlCharIndex];
+        let controlChars =
+          unparsedFragment[controlCharsIndex] === "<" &&
+          unparsedFragment[controlCharsIndex + 1] === "/"
+            ? "</"
+            : unparsedFragment[controlCharsIndex];
 
-        switch (controlChar) {
+        switch (controlChars) {
           case "<":
-            if (controlCharIndex !== 0) {
+            if (controlCharsIndex !== 0) {
               if (phrases[0]) {
                 phrases[phrases.length - 1].value += unparsedFragment.slice(
                   0,
-                  controlCharIndex
+                  controlCharsIndex
                 );
               } else {
                 phrases.push({
-                  value: unparsedFragment.slice(0, controlCharIndex),
+                  value: unparsedFragment.slice(0, controlCharsIndex),
                 });
               }
             }
@@ -310,7 +329,7 @@ function parseTemplateInPlaceV2(template) {
             // DEV: this is the spot to deal with web components
             phrases.push({ tagStart: true, value: "<", isTagContinued: true });
 
-            isTag = true;
+            isOpeningTag = true;
 
             break;
 
@@ -319,11 +338,11 @@ function parseTemplateInPlaceV2(template) {
             if (phrases[0]) {
               phrases[phrases.length - 1].value += unparsedFragment.slice(
                 0,
-                controlCharIndex + 1
+                controlCharsIndex + 1
               );
             } else {
               phrases.push({
-                value: unparsedFragment.slice(0, controlCharIndex + 1),
+                value: unparsedFragment.slice(0, controlCharsIndex + 1),
                 isTagContinued: true,
               });
             }
@@ -331,26 +350,46 @@ function parseTemplateInPlaceV2(template) {
             isAttr = !isAttr;
 
             break;
-          case ">":
+          // DEV: these actually only matter if there's an opening component tag
+          // - component tags will need to be isolated since they shouldn't end
+          //   up as part of the dom
+          case "</":
             if (phrases[0]) {
-              phrases[phrases.length - 1].isTagContinued = false;
-              phrases[phrases.length - 1].tagStart = false;
               phrases[phrases.length - 1].value += unparsedFragment.slice(
                 0,
-                controlCharIndex + 1
+                controlCharsIndex + 2
               );
             } else {
               phrases.push({
-                value: unparsedFragment.slice(0, controlCharIndex + 1),
+                value: unparsedFragment.slice(0, controlCharsIndex + 2),
               });
             }
 
-            isTag = false;
+            console.log("encountered closing tag...");
+
+            isClosingTag = true;
+
+            break;
+          case ">":
+            if (phrases[0]) {
+              phrases[phrases.length - 1].isTagContinued = false;
+              phrases[phrases.length - 1].value += unparsedFragment.slice(
+                0,
+                controlCharsIndex + 1
+              );
+            } else {
+              phrases.push({
+                value: unparsedFragment.slice(0, controlCharsIndex + 1),
+              });
+            }
+
+            isClosingTag = false;
+            isOpeningTag = false;
 
             break;
         }
 
-        unparsedFragment = unparsedFragment.slice(controlCharIndex + 1);
+        unparsedFragment = unparsedFragment.slice(controlCharsIndex + 1);
       }
 
       return result.concat([phrases]);
@@ -363,7 +402,16 @@ const test = getTemplateBuilderV2();
 
 const template = test`
   this is just a string
-  <div id="my-div"><Component ${{}} id="<_adfa>k<>" ${{}} />hello world<span spanid="my-span<<><'" onclick=${() => {}}></span><input oninput=${() => {}} /></div><div>hello world</div>
+  <div id="my-div">
+    <Component ${{}} id="<_adfa>k<>" ${{}} />
+      hello world
+      <span spanid="my-span<<><'" onclick=${() => {}}></span>
+      <input oninput=${() => {}} />
+  </div>
+  <div>hello world</div>
+  <Component>
+    <span>hello world</span>
+  </Component>
 `;
 
 console.log(JSON.stringify(template, null, 2));
