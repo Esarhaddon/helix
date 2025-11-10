@@ -239,9 +239,15 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   };
 }
 
-// DEV: one way to think about parsing Component children would be that you're
-// parsing/creating a template and then adding it the component's props
-// - might involve calling parseTemplateInPlace recursively?
+// DEV: plan for parsing component children
+// - add a components array to the template
+// - every time you come across a component in the template add it to the array
+// - if you encounter a component with an opening tag add a children property
+// - keep a reference to the currently open component tag and add new phrases to
+//   a template in that component's children property
+// - remove items from the top level templateChildren array
+// - keep track of closting component tags and jump back to the previous
+//   reference when one component is closed
 
 function parseTemplateInPlaceV2(template) {
   let isTag = false;
