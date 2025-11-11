@@ -257,16 +257,17 @@ const cache = {};
 function parseTemplateInPlaceV2(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
-  let isComponent = false;
+  let isComponentTag = false;
   let isAttr = false;
 
   template.parsedHtmlFragments = template.htmlFragments.reduce(
     (result, fragment) => {
       const phrases = [];
-      const componentPhrasesStack = [];
+      const componentPhrasesStack = [phrases];
 
-      // DEV: whether you drop web components now or not, you will need to do some
-      // extra work with opening and closing component tags
+      // DEV: control characters besides ">" and '"' should create new phrases
+      // if the previous phrase was for a component
+      // - maybe something you could build into a helper function
 
       let unparsedFragment = fragment;
       while (unparsedFragment.length) {
@@ -329,11 +330,22 @@ function parseTemplateInPlaceV2(template) {
             // DEV: this is the spot to deal with web components
             phrases.push({ tagStart: true, value: "<", isTagContinued: true });
 
+            // DEV: if the fragment ends at controlCharsIndex then we've got a
+            // syntax error
+            if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
+              isComponentTag = true;
+              // DEV: things to add to the previous phrase:
+              // - isComponentTag
+              // - depth, which will be componentPhrasesStack.length
+            }
+
             isOpeningTag = true;
 
             break;
 
-          // DEV: these last two cases could be combind?
+          // DEV: you probably should allow attributes on components
+          // - but maybe just ignore them for now?
+          // - actually, shouldn't be too difficult to add support for this
           case '"':
             if (phrases[0]) {
               phrases[phrases.length - 1].value += unparsedFragment.slice(
@@ -354,6 +366,7 @@ function parseTemplateInPlaceV2(template) {
           // - component tags will need to be isolated since they shouldn't end
           //   up as part of the dom
           case "</":
+            // DEV: if this is for a component then it should start a new phrase
             if (phrases[0]) {
               phrases[phrases.length - 1].value += unparsedFragment.slice(
                 0,
@@ -371,6 +384,7 @@ function parseTemplateInPlaceV2(template) {
 
             break;
           case ">":
+            // DEV: there's some extra work to do if this is for a component
             if (phrases[0]) {
               phrases[phrases.length - 1].isTagContinued = false;
               phrases[phrases.length - 1].value += unparsedFragment.slice(
@@ -385,6 +399,7 @@ function parseTemplateInPlaceV2(template) {
 
             isClosingTag = false;
             isOpeningTag = false;
+            isComponentTag = false;
 
             break;
         }
