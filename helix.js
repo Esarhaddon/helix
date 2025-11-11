@@ -265,6 +265,14 @@ function parseTemplateInPlaceV2(template) {
       const phrases = [];
       const componentPhrasesStack = [phrases];
 
+      function lastPhrase() {
+        return componentPhrasesStack.at(-1).at(-1);
+      }
+
+      function pushPhrase(phrase) {
+        componentPhrasesStack.at(-1).push(phrase);
+      }
+
       // DEV: control characters besides ">" and '"' should create new phrases
       // if the previous phrase was for a component
       // - maybe something you could build into a helper function
@@ -292,10 +300,10 @@ function parseTemplateInPlaceV2(template) {
         );
 
         if (controlCharsIndex < 0) {
-          if (phrases[0]) {
-            phrases[phrases.length - 1].value += unparsedFragment;
+          if (lastPhrase()) {
+            lastPhrase().value += unparsedFragment;
           } else {
-            phrases.push({
+            pushPhrase({
               isAttr,
               isTag: isOpeningTag,
               value: unparsedFragment,
@@ -316,12 +324,12 @@ function parseTemplateInPlaceV2(template) {
           case "<":
             if (controlCharsIndex !== 0) {
               if (phrases[0]) {
-                phrases[phrases.length - 1].value += unparsedFragment.slice(
+                lastPhrase().value += unparsedFragment.slice(
                   0,
                   controlCharsIndex
                 );
               } else {
-                phrases.push({
+                pushPhrase({
                   value: unparsedFragment.slice(0, controlCharsIndex),
                 });
               }
