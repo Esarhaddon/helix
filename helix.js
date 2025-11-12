@@ -265,7 +265,7 @@ function parseTemplateInPlaceV2(template) {
       const phrases = [];
       const componentPhrasesStack = [phrases];
 
-      function lastPhrase() {
+      function prevPhrase() {
         return componentPhrasesStack.at(-1).at(-1);
       }
 
@@ -300,8 +300,8 @@ function parseTemplateInPlaceV2(template) {
         );
 
         if (controlCharsIndex < 0) {
-          if (lastPhrase()) {
-            lastPhrase().value += unparsedFragment;
+          if (prevPhrase()) {
+            prevPhrase().value += unparsedFragment;
           } else {
             pushPhrase({
               isAttr,
@@ -323,8 +323,8 @@ function parseTemplateInPlaceV2(template) {
         switch (controlChars) {
           case "<":
             if (controlCharsIndex !== 0) {
-              if (phrases[0]) {
-                lastPhrase().value += unparsedFragment.slice(
+              if (prevPhrase()) {
+                prevPhrase().value += unparsedFragment.slice(
                   0,
                   controlCharsIndex
                 );
@@ -335,8 +335,7 @@ function parseTemplateInPlaceV2(template) {
               }
             }
 
-            // DEV: this is the spot to deal with web components
-            phrases.push({ tagStart: true, value: "<", isTagContinued: true });
+            pushPhrase({ tagStart: true, value: "<", isTagContinued: true });
 
             // DEV: if the fragment ends at controlCharsIndex then we've got a
             // syntax error
@@ -354,14 +353,16 @@ function parseTemplateInPlaceV2(template) {
           // DEV: you probably should allow attributes on components
           // - but maybe just ignore them for now?
           // - actually, shouldn't be too difficult to add support for this
+          // - will require extra work to support attributes with interpolated
+          //   values (probably "=" will need to become a control character)
           case '"':
-            if (phrases[0]) {
-              phrases[phrases.length - 1].value += unparsedFragment.slice(
+            if (prevPhrase()) {
+              prevPhrase().value += unparsedFragment.slice(
                 0,
                 controlCharsIndex + 1
               );
             } else {
-              phrases.push({
+              pushPhrase({
                 value: unparsedFragment.slice(0, controlCharsIndex + 1),
                 isTagContinued: true,
               });
@@ -375,13 +376,13 @@ function parseTemplateInPlaceV2(template) {
           //   up as part of the dom
           case "</":
             // DEV: if this is for a component then it should start a new phrase
-            if (phrases[0]) {
-              phrases[phrases.length - 1].value += unparsedFragment.slice(
+            if (prevPhrase()) {
+              prevPhrase().value += unparsedFragment.slice(
                 0,
                 controlCharsIndex + 2
               );
             } else {
-              phrases.push({
+              pushPhrase({
                 value: unparsedFragment.slice(0, controlCharsIndex + 2),
               });
             }
@@ -393,14 +394,14 @@ function parseTemplateInPlaceV2(template) {
             break;
           case ">":
             // DEV: there's some extra work to do if this is for a component
-            if (phrases[0]) {
-              phrases[phrases.length - 1].isTagContinued = false;
-              phrases[phrases.length - 1].value += unparsedFragment.slice(
+            if (prevPhrase()) {
+              prevPhrase().isTagContinued = false;
+              prevPhrase().value += unparsedFragment.slice(
                 0,
                 controlCharsIndex + 1
               );
             } else {
-              phrases.push({
+              pushPhrase({
                 value: unparsedFragment.slice(0, controlCharsIndex + 1),
               });
             }
