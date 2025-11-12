@@ -254,6 +254,8 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
 
 const cache = {};
 
+// DEV: seems like you could make this simpler if you always just
+// pushed new phrases?
 function parseTemplateInPlaceV2(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
@@ -279,6 +281,7 @@ function parseTemplateInPlaceV2(template) {
 
       let unparsedFragment = fragment;
       while (unparsedFragment.length) {
+        console.log("unparsedFragment:", unparsedFragment);
         let controlCharsIndex = unparsedFragment.split("").findIndex(
           (char, i) =>
             // Opening tag start
@@ -299,7 +302,11 @@ function parseTemplateInPlaceV2(template) {
             (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")
         );
 
-        if (controlCharsIndex < 0) {
+        // DEV: you need to get the component name somehow
+
+        console.log({ controlCharsIndex });
+
+        if (controlCharsIndex < 0 && !isComponentTag) {
           if (prevPhrase()) {
             prevPhrase().value += unparsedFragment;
           } else {
@@ -323,7 +330,7 @@ function parseTemplateInPlaceV2(template) {
         switch (controlChars) {
           case "<":
             if (controlCharsIndex !== 0) {
-              if (prevPhrase()) {
+              if (prevPhrase() && prevPhrase().isComponentTag) {
                 prevPhrase().value += unparsedFragment.slice(
                   0,
                   controlCharsIndex
@@ -341,9 +348,22 @@ function parseTemplateInPlaceV2(template) {
             // syntax error
             if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
               isComponentTag = true;
-              // DEV: things to add to the previous phrase:
-              // - isComponentTag
-              // - depth, which will be componentPhrasesStack.length
+
+              // DEV: you've got some explaining to do
+
+              // DEV: children might not be quite the right word for this
+              const children = {
+                _isTemplateNode: true,
+                parsedHtmlFragments: [],
+              };
+
+              prevPhrase().value = "";
+              prevPhrase().children = children;
+              prevPhrase().depth = componentPhrasesStack.length;
+              prevPhrase().isComponentTag = true;
+              prevPhrase().isOpeningTag = true;
+
+              componentPhrasesStack.push(children.parsedHtmlFragments);
             }
 
             isOpeningTag = true;
@@ -356,16 +376,18 @@ function parseTemplateInPlaceV2(template) {
           // - will require extra work to support attributes with interpolated
           //   values (probably "=" will need to become a control character)
           case '"':
-            if (prevPhrase()) {
-              prevPhrase().value += unparsedFragment.slice(
-                0,
-                controlCharsIndex + 1
-              );
-            } else {
-              pushPhrase({
-                value: unparsedFragment.slice(0, controlCharsIndex + 1),
-                isTagContinued: true,
-              });
+            if (!isComponentTag) {
+              if (prevPhrase()) {
+                prevPhrase().value += unparsedFragment.slice(
+                  0,
+                  controlCharsIndex + 1
+                );
+              } else {
+                pushPhrase({
+                  value: unparsedFragment.slice(0, controlCharsIndex + 1),
+                  isTagContinued: true,
+                });
+              }
             }
 
             isAttr = !isAttr;
@@ -375,16 +397,34 @@ function parseTemplateInPlaceV2(template) {
           // - component tags will need to be isolated since they shouldn't end
           //   up as part of the dom
           case "</":
+            // DEV: this isn't quite right, you need to call pop before pushing anything else
+
             // DEV: if this is for a component then it should start a new phrase
-            if (prevPhrase()) {
+            if (prevPhrase() && !prevPhrase().isComponentTag) {
               prevPhrase().value += unparsedFragment.slice(
                 0,
                 controlCharsIndex + 2
               );
             } else {
+              if (/A-Z/.test(unparsedFragment[controlCharsIndex + 2])) {
+                isComponentTag = true;
+              }
+
               pushPhrase({
-                value: unparsedFragment.slice(0, controlCharsIndex + 2),
+                value: unparsedFragment.slice(
+                  0,
+                  isComponentTag ? controlCharsIndex : controlCharsIndex + 2
+                ),
               });
+
+              if (isComponentTag) {
+                pushPhrase({
+                  isComponentTag,
+                  isClosingTag: true,
+                  value: "",
+                  depth: componentPhrasesStack.length - 1,
+                });
+              }
             }
 
             console.log("encountered closing tag...");
@@ -394,16 +434,22 @@ function parseTemplateInPlaceV2(template) {
             break;
           case ">":
             // DEV: there's some extra work to do if this is for a component
-            if (prevPhrase()) {
-              prevPhrase().isTagContinued = false;
-              prevPhrase().value += unparsedFragment.slice(
-                0,
-                controlCharsIndex + 1
-              );
+
+            prevPhrase() && (prevPhrase().isTagContinued = false);
+
+            if (!isComponentTag) {
+              if (prevPhrase()) {
+                prevPhrase().value += unparsedFragment.slice(
+                  0,
+                  controlCharsIndex + 1
+                );
+              } else {
+                pushPhrase({
+                  value: unparsedFragment.slice(0, controlCharsIndex + 1),
+                });
+              }
             } else {
-              pushPhrase({
-                value: unparsedFragment.slice(0, controlCharsIndex + 1),
-              });
+              // componentPhrasesStack.pop();
             }
 
             isClosingTag = false;
@@ -413,7 +459,9 @@ function parseTemplateInPlaceV2(template) {
             break;
         }
 
-        unparsedFragment = unparsedFragment.slice(controlCharsIndex + 1);
+        unparsedFragment = controlChars
+          ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
+          : "";
       }
 
       return result.concat([phrases]);
@@ -428,9 +476,9 @@ const template = test`
   this is just a string
   <div id="my-div">
     <Component ${{}} id="<_adfa>k<>" ${{}} />
-      hello world
-      <span spanid="my-span<<><'" onclick=${() => {}}></span>
-      <input oninput=${() => {}} />
+    hello world
+    <span spanid="my-span<<><'" onclick=${() => {}}></span>
+    <input oninput=${() => {}} />
   </div>
   <div>hello world</div>
   <Component>
