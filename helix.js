@@ -281,7 +281,6 @@ function parseTemplateInPlaceV2(template) {
 
       let unparsedFragment = fragment;
       while (unparsedFragment.length) {
-        console.log("unparsedFragment:", unparsedFragment);
         let controlCharsIndex = unparsedFragment.split("").findIndex(
           (char, i) =>
             // Opening tag start
@@ -303,8 +302,6 @@ function parseTemplateInPlaceV2(template) {
         );
 
         // DEV: you need to get the component name somehow
-
-        console.log({ controlCharsIndex });
 
         if (controlCharsIndex < 0 && !isComponentTag) {
           if (prevPhrase()) {
@@ -397,37 +394,27 @@ function parseTemplateInPlaceV2(template) {
           // - component tags will need to be isolated since they shouldn't end
           //   up as part of the dom
           case "</":
-            // DEV: this isn't quite right, you need to call pop before pushing anything else
+            if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 2])) {
+              isComponentTag = true;
+            }
 
-            // DEV: if this is for a component then it should start a new phrase
             if (prevPhrase() && !prevPhrase().isComponentTag) {
               prevPhrase().value += unparsedFragment.slice(
                 0,
-                controlCharsIndex + 2
+                isComponentTag ? controlCharsIndex : controlCharsIndex + 2
               );
-            } else {
-              if (/A-Z/.test(unparsedFragment[controlCharsIndex + 2])) {
-                isComponentTag = true;
-              }
-
-              pushPhrase({
-                value: unparsedFragment.slice(
-                  0,
-                  isComponentTag ? controlCharsIndex : controlCharsIndex + 2
-                ),
-              });
-
-              if (isComponentTag) {
-                pushPhrase({
-                  isComponentTag,
-                  isClosingTag: true,
-                  value: "",
-                  depth: componentPhrasesStack.length - 1,
-                });
-              }
             }
 
-            console.log("encountered closing tag...");
+            if (isComponentTag) {
+              componentPhrasesStack.pop();
+
+              pushPhrase({
+                isComponentTag,
+                isClosingTag: true,
+                value: "",
+                depth: componentPhrasesStack.length,
+              });
+            }
 
             isClosingTag = true;
 
@@ -448,8 +435,6 @@ function parseTemplateInPlaceV2(template) {
                   value: unparsedFragment.slice(0, controlCharsIndex + 1),
                 });
               }
-            } else {
-              // componentPhrasesStack.pop();
             }
 
             isClosingTag = false;
@@ -482,7 +467,13 @@ const template = test`
   </div>
   <div>hello world</div>
   <Component>
-    <span>hello world</span>
+    <span>
+      hello world
+      <div>event moar nested</div>
+      <AnotherComponent>
+        <div>You still need to match tags?</div>
+      </AnotherComponent>
+    </span>
   </Component>
 `;
 
