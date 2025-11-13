@@ -254,6 +254,8 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
 
 const cache = {};
 
+// DEV: pushPhrase vs prevPhrase does make things harder to reason about
+
 // DEV: seems like you could make this simpler if you always just
 // pushed new phrases?
 function parseTemplateInPlaceV2(template) {
@@ -304,7 +306,7 @@ function parseTemplateInPlaceV2(template) {
         // DEV: you need to get the component name somehow
 
         if (controlCharsIndex < 0 && !isComponentTag) {
-          if (prevPhrase()) {
+          if (prevPhrase() && !prevPhrase().isComponentTag) {
             prevPhrase().value += unparsedFragment;
           } else {
             pushPhrase({
@@ -327,7 +329,7 @@ function parseTemplateInPlaceV2(template) {
         switch (controlChars) {
           case "<":
             if (controlCharsIndex !== 0) {
-              if (prevPhrase() && prevPhrase().isComponentTag) {
+              if (prevPhrase() && !prevPhrase().isComponentTag) {
                 prevPhrase().value += unparsedFragment.slice(
                   0,
                   controlCharsIndex
@@ -390,10 +392,15 @@ function parseTemplateInPlaceV2(template) {
             isAttr = !isAttr;
 
             break;
+          // DEV: pretty sure you don't actually need a separate phrase for a
+          // closing comoponent tag
+
           // DEV: these actually only matter if there's an opening component tag
           // - component tags will need to be isolated since they shouldn't end
           //   up as part of the dom
           case "</":
+            // DEV: this is still not quite right (which is why "does this
+            // work?" is getting left out)
             if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 2])) {
               isComponentTag = true;
             }
@@ -469,12 +476,14 @@ const template = test`
   <Component>
     <span>
       hello world
-      <div>event moar nested</div>
+      <div>even moar nested</div>
       <AnotherComponent>
         <div>You still need to match tags?</div>
       </AnotherComponent>
+      does this work?
     </span>
   </Component>
+  <span>last little bit</span>
 `;
 
 console.log(JSON.stringify(template, null, 2));
