@@ -255,6 +255,7 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
 const cache = {};
 
 // DEV: pushPhrase vs prevPhrase does make things harder to reason about
+// - probably should mostly just move to pushPhrase at some point
 
 // DEV: seems like you could make this simpler if you always just
 // pushed new phrases?
@@ -351,6 +352,8 @@ function parseTemplateInPlaceV2(template) {
               // DEV: you've got some explaining to do
 
               // DEV: children might not be quite the right word for this
+
+              // DEV: don't bother setting up a template at this point
               const children = {
                 _isTemplateNode: true,
                 parsedHtmlFragments: [],
@@ -392,15 +395,7 @@ function parseTemplateInPlaceV2(template) {
             isAttr = !isAttr;
 
             break;
-          // DEV: pretty sure you don't actually need a separate phrase for a
-          // closing comoponent tag
-
-          // DEV: these actually only matter if there's an opening component tag
-          // - component tags will need to be isolated since they shouldn't end
-          //   up as part of the dom
           case "</":
-            // DEV: this is still not quite right (which is why "does this
-            // work?" is getting left out)
             if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 2])) {
               isComponentTag = true;
             }
@@ -410,6 +405,10 @@ function parseTemplateInPlaceV2(template) {
                 0,
                 isComponentTag ? controlCharsIndex : controlCharsIndex + 2
               );
+            } else if (!isComponentTag) {
+              pushPhrase({
+                value: unparsedFragment.slice(0, controlCharsIndex + 2),
+              });
             }
 
             if (isComponentTag) {
@@ -428,6 +427,7 @@ function parseTemplateInPlaceV2(template) {
             break;
           case ">":
             // DEV: there's some extra work to do if this is for a component
+            // - you need to handle self-closing component tags
 
             prevPhrase() && (prevPhrase().isTagContinued = false);
 
