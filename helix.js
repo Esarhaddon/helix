@@ -265,201 +265,211 @@ function parseTemplateInPlaceV2(template) {
   let isComponentTag = false;
   let isAttr = false;
 
-  template.parsedHtmlFragments = template.htmlFragments.reduce(
-    (result, fragment) => {
-      const phrases = [];
-      const componentPhrasesStack = [phrases];
+  // DEV
 
-      function prevPhrase() {
-        return componentPhrasesStack.at(-1).at(-1);
-      }
+  // DEV: push parsed html onto the last level in the level stack
+  // - you'll need to be able to switch levels mid fragment
 
-      function pushPhrase(phrase) {
-        componentPhrasesStack.at(-1).push(phrase);
-      }
+  const levelsStack = [];
 
-      // DEV: control characters besides ">" and '"' should create new phrases
-      // if the previous phrase was for a component
-      // - maybe something you could build into a helper function
+  // DEV: pretty sure this needs to be a map
+  const result = [];
+  template.parsedHtmlFragments = result;
 
-      let unparsedFragment = fragment;
-      while (unparsedFragment.length) {
-        let controlCharsIndex = unparsedFragment.split("").findIndex(
-          (char, i) =>
-            // Opening tag start
-            (!isOpeningTag &&
-              !isAttr &&
-              char === "<" &&
-              unparsedFragment[i + 1] !== "/") ||
-            // Attribute start or end
-            (isOpeningTag && char === '"') ||
-            // DEV: this only matter if there's an open component tag
+  template.htmlFragments.forEach((fragment) => {
+    // DEV: this isn't quite right
 
-            // Closing tag start
-            (!isOpeningTag &&
-              !isAttr &&
-              char === "<" &&
-              unparsedFragment[i + 1] === "/") ||
-            // Tag end
-            (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")
-        );
+    const phrases = [];
+    const componentPhrasesStack = [phrases];
 
-        // DEV: you need to get the component name somehow
+    function prevPhrase() {
+      return componentPhrasesStack.at(-1).at(-1);
+    }
 
-        if (controlCharsIndex < 0 && !isComponentTag) {
-          if (prevPhrase() && !prevPhrase().isComponentTag) {
-            prevPhrase().value += unparsedFragment;
-          } else {
-            pushPhrase({
-              isAttr,
-              isTag: isOpeningTag,
-              value: unparsedFragment,
-              isTagContinued: isOpeningTag,
-            });
-          }
+    function pushPhrase(phrase) {
+      componentPhrasesStack.at(-1).push(phrase);
+    }
 
-          break;
+    // DEV: control characters besides ">" and '"' should create new phrases
+    // if the previous phrase was for a component
+    // - maybe something you could build into a helper function
+
+    let unparsedFragment = fragment;
+    while (unparsedFragment.length) {
+      let controlCharsIndex = unparsedFragment.split("").findIndex(
+        (char, i) =>
+          // Opening tag start
+          (!isOpeningTag &&
+            !isAttr &&
+            char === "<" &&
+            unparsedFragment[i + 1] !== "/") ||
+          // Attribute start or end
+          (isOpeningTag && char === '"') ||
+          // DEV: this only matter if there's an open component tag
+
+          // Closing tag start
+          (!isOpeningTag &&
+            !isAttr &&
+            char === "<" &&
+            unparsedFragment[i + 1] === "/") ||
+          // Tag end
+          (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")
+      );
+
+      // DEV: you need to get the component name somehow
+
+      if (controlCharsIndex < 0 && !isComponentTag) {
+        if (prevPhrase() && !prevPhrase().isComponentTag) {
+          prevPhrase().value += unparsedFragment;
+        } else {
+          pushPhrase({
+            isAttr,
+            isTag: isOpeningTag,
+            value: unparsedFragment,
+            isTagContinued: isOpeningTag,
+          });
         }
 
-        let controlChars =
-          unparsedFragment[controlCharsIndex] === "<" &&
-          unparsedFragment[controlCharsIndex + 1] === "/"
-            ? "</"
-            : unparsedFragment[controlCharsIndex];
+        break;
+      }
 
-        switch (controlChars) {
-          case "<":
-            if (controlCharsIndex !== 0) {
-              if (prevPhrase() && !prevPhrase().isComponentTag) {
-                prevPhrase().value += unparsedFragment.slice(
-                  0,
-                  controlCharsIndex
-                );
-              } else {
-                pushPhrase({
-                  value: unparsedFragment.slice(0, controlCharsIndex),
-                });
-              }
-            }
+      let controlChars =
+        unparsedFragment[controlCharsIndex] === "<" &&
+        unparsedFragment[controlCharsIndex + 1] === "/"
+          ? "</"
+          : unparsedFragment[controlCharsIndex];
 
-            pushPhrase({ tagStart: true, value: "<", isTagContinued: true });
-
-            // DEV: if the fragment ends at controlCharsIndex then we've got a
-            // syntax error
-            if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
-              isComponentTag = true;
-
-              // DEV: you've got some explaining to do
-
-              // DEV: children might not be quite the right word for this
-
-              // DEV: don't bother setting up a template at this point
-              const children = {
-                _isTemplateNode: true,
-                parsedHtmlFragments: [],
-              };
-
-              prevPhrase().value = "";
-              prevPhrase().children = children;
-              prevPhrase().depth = componentPhrasesStack.length;
-              prevPhrase().isComponentTag = true;
-              prevPhrase().isOpeningTag = true;
-
-              componentPhrasesStack.push(children.parsedHtmlFragments);
-            }
-
-            isOpeningTag = true;
-
-            break;
-
-          // DEV: you probably should allow attributes on components
-          // - but maybe just ignore them for now?
-          // - actually, shouldn't be too difficult to add support for this
-          // - will require extra work to support attributes with interpolated
-          //   values (probably "=" will need to become a control character)
-          case '"':
-            if (!isComponentTag) {
-              if (prevPhrase()) {
-                prevPhrase().value += unparsedFragment.slice(
-                  0,
-                  controlCharsIndex + 1
-                );
-              } else {
-                pushPhrase({
-                  value: unparsedFragment.slice(0, controlCharsIndex + 1),
-                  isTagContinued: true,
-                });
-              }
-            }
-
-            isAttr = !isAttr;
-
-            break;
-          case "</":
-            if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 2])) {
-              isComponentTag = true;
-            }
-
+      switch (controlChars) {
+        case "<":
+          if (controlCharsIndex !== 0) {
             if (prevPhrase() && !prevPhrase().isComponentTag) {
               prevPhrase().value += unparsedFragment.slice(
                 0,
-                isComponentTag ? controlCharsIndex : controlCharsIndex + 2
+                controlCharsIndex
               );
-            } else if (!isComponentTag) {
+            } else {
               pushPhrase({
-                value: unparsedFragment.slice(0, controlCharsIndex + 2),
+                value: unparsedFragment.slice(0, controlCharsIndex),
               });
             }
+          }
 
-            if (isComponentTag) {
-              componentPhrasesStack.pop();
+          pushPhrase({ tagStart: true, value: "<", isTagContinued: true });
 
+          // DEV: if the fragment ends at controlCharsIndex then we've got a
+          // syntax error
+          if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
+            isComponentTag = true;
+
+            // DEV: you've got some explaining to do
+
+            // DEV: children might not be quite the right word for this
+
+            // DEV: don't bother setting up a template at this point
+            const children = {
+              _isTemplateNode: true,
+              parsedHtmlFragments: [[]],
+            };
+
+            prevPhrase().value = "";
+            prevPhrase().children = children;
+            prevPhrase().depth = componentPhrasesStack.length;
+            prevPhrase().isComponentTag = true;
+            prevPhrase().isOpeningTag = true;
+
+            componentPhrasesStack.push(children.parsedHtmlFragments);
+          }
+
+          isOpeningTag = true;
+
+          break;
+
+        // DEV: you probably should allow attributes on components
+        // - but maybe just ignore them for now?
+        // - actually, shouldn't be too difficult to add support for this
+        // - will require extra work to support attributes with interpolated
+        //   values (probably "=" will need to become a control character)
+        case '"':
+          if (!isComponentTag) {
+            if (prevPhrase()) {
+              prevPhrase().value += unparsedFragment.slice(
+                0,
+                controlCharsIndex + 1
+              );
+            } else {
               pushPhrase({
-                isComponentTag,
-                isClosingTag: true,
-                value: "",
-                depth: componentPhrasesStack.length,
+                value: unparsedFragment.slice(0, controlCharsIndex + 1),
+                isTagContinued: true,
               });
             }
+          }
 
-            isClosingTag = true;
+          isAttr = !isAttr;
 
-            break;
-          case ">":
-            // DEV: there's some extra work to do if this is for a component
-            // - you need to handle self-closing component tags
+          break;
+        case "</":
+          if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 2])) {
+            isComponentTag = true;
+          }
 
-            prevPhrase() && (prevPhrase().isTagContinued = false);
+          if (prevPhrase() && !prevPhrase().isComponentTag) {
+            prevPhrase().value += unparsedFragment.slice(
+              0,
+              isComponentTag ? controlCharsIndex : controlCharsIndex + 2
+            );
+          } else if (!isComponentTag) {
+            pushPhrase({
+              value: unparsedFragment.slice(0, controlCharsIndex + 2),
+            });
+          }
 
-            if (!isComponentTag) {
-              if (prevPhrase()) {
-                prevPhrase().value += unparsedFragment.slice(
-                  0,
-                  controlCharsIndex + 1
-                );
-              } else {
-                pushPhrase({
-                  value: unparsedFragment.slice(0, controlCharsIndex + 1),
-                });
-              }
+          if (isComponentTag) {
+            componentPhrasesStack.pop();
+
+            pushPhrase({
+              isComponentTag,
+              isClosingTag: true,
+              value: "",
+              depth: componentPhrasesStack.length,
+            });
+          }
+
+          isClosingTag = true;
+
+          break;
+        case ">":
+          // DEV: there's some extra work to do if this is for a component
+          // - you need to handle self-closing component tags
+
+          prevPhrase() && (prevPhrase().isTagContinued = false);
+
+          if (!isComponentTag) {
+            if (prevPhrase()) {
+              prevPhrase().value += unparsedFragment.slice(
+                0,
+                controlCharsIndex + 1
+              );
+            } else {
+              pushPhrase({
+                value: unparsedFragment.slice(0, controlCharsIndex + 1),
+              });
             }
+          }
 
-            isClosingTag = false;
-            isOpeningTag = false;
-            isComponentTag = false;
+          isClosingTag = false;
+          isOpeningTag = false;
+          isComponentTag = false;
 
-            break;
-        }
-
-        unparsedFragment = controlChars
-          ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
-          : "";
+          break;
       }
 
-      return result.concat([phrases]);
-    },
-    []
-  );
+      unparsedFragment = controlChars
+        ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
+        : "";
+    }
+
+    result.push(phrases);
+  }, []);
 }
 
 const test = getTemplateBuilderV2();
