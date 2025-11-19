@@ -270,24 +270,20 @@ function parseTemplateInPlaceV2(template) {
   // DEV: push parsed html onto the last level in the level stack
   // - you'll need to be able to switch levels mid fragment
 
-  const levelsStack = [];
-
-  // DEV: pretty sure this needs to be a map
   const result = [];
+  const levelsStack = [result];
+
   template.parsedHtmlFragments = result;
 
   template.htmlFragments.forEach((fragment) => {
-    // DEV: this isn't quite right
-
-    const phrases = [];
-    const componentPhrasesStack = [phrases];
+    levelsStack.at(-1).push([]);
 
     function prevPhrase() {
-      return componentPhrasesStack.at(-1).at(-1);
+      return levelsStack.at(-1).at(-1).at(-1);
     }
 
     function pushPhrase(phrase) {
-      componentPhrasesStack.at(-1).push(phrase);
+      levelsStack.at(-1).at(-1).push(phrase);
     }
 
     // DEV: control characters besides ">" and '"' should create new phrases
@@ -373,11 +369,11 @@ function parseTemplateInPlaceV2(template) {
 
             prevPhrase().value = "";
             prevPhrase().children = children;
-            prevPhrase().depth = componentPhrasesStack.length;
+            prevPhrase().depth = levelsStack.length;
             prevPhrase().isComponentTag = true;
             prevPhrase().isOpeningTag = true;
 
-            componentPhrasesStack.push(children.parsedHtmlFragments);
+            levelsStack.push(children.parsedHtmlFragments);
           }
 
           isOpeningTag = true;
@@ -424,13 +420,13 @@ function parseTemplateInPlaceV2(template) {
           }
 
           if (isComponentTag) {
-            componentPhrasesStack.pop();
+            levelsStack.pop();
 
             pushPhrase({
               isComponentTag,
               isClosingTag: true,
               value: "",
-              depth: componentPhrasesStack.length,
+              depth: levelsStack.length,
             });
           }
 
@@ -467,8 +463,6 @@ function parseTemplateInPlaceV2(template) {
         ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
         : "";
     }
-
-    result.push(phrases);
   }, []);
 }
 
