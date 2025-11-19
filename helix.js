@@ -259,6 +259,8 @@ const cache = {};
 
 // DEV: seems like you could make this simpler if you always just
 // pushed new phrases?
+
+// DEV: this can be a pure fn?
 function parseTemplateInPlaceV2(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
@@ -363,7 +365,6 @@ function parseTemplateInPlaceV2(template) {
 
             // DEV: don't bother setting up a template at this point
             const children = {
-              _isTemplateNode: true,
               parsedHtmlFragments: [[]],
             };
 
@@ -372,6 +373,7 @@ function parseTemplateInPlaceV2(template) {
             prevPhrase().depth = levelsStack.length;
             prevPhrase().isComponentTag = true;
             prevPhrase().isOpeningTag = true;
+            prevPhrase().isTagContinued = false;
 
             levelsStack.push(children.parsedHtmlFragments);
           }
@@ -421,13 +423,6 @@ function parseTemplateInPlaceV2(template) {
 
           if (isComponentTag) {
             levelsStack.pop();
-
-            pushPhrase({
-              isComponentTag,
-              isClosingTag: true,
-              value: "",
-              depth: levelsStack.length,
-            });
           }
 
           isClosingTag = true;
@@ -450,6 +445,8 @@ function parseTemplateInPlaceV2(template) {
                 value: unparsedFragment.slice(0, controlCharsIndex + 1),
               });
             }
+          } else if (unparsedFragment[controlCharsIndex - 1] === "/") {
+            levelsStack.pop();
           }
 
           isClosingTag = false;
@@ -480,9 +477,11 @@ const template = test`
   <Component>
     <span>
       hello world
+      ${{}}
       <div>even moar nested</div>
       <AnotherComponent>
-        <div>You still need to match tags?</div>
+        <div onclick=${() => {}}>You still need to match tags?</div>
+        <div onclick=${() => {}}>Very cool that this is working now</div>
       </AnotherComponent>
       does this work?
     </span>
