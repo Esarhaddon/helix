@@ -359,23 +359,26 @@ function parseTemplateInPlaceV2(template) {
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
             isComponentTag = true;
 
-            // DEV: you've got some explaining to do
-
-            // DEV: children might not be quite the right word for this
-
-            // DEV: don't bother setting up a template at this point
-            const children = {
+            Object.assign(prevPhrase(), {
+              isComponentTag: true,
+              tagName: unparsedFragment.slice(
+                controlCharsIndex + 1,
+                controlCharsIndex +
+                  1 +
+                  unparsedFragment
+                    .slice(controlCharsIndex + 1)
+                    .split("")
+                    // TODO: figure out what characters should be allowed in
+                    // component names
+                    .findIndex((char) => !/[a-z0-9]/i.test(char))
+              ),
+              isOpeningTag: true,
+              isTagContinued: false,
+              value: "",
               parsedHtmlFragments: [[]],
-            };
+            });
 
-            prevPhrase().value = "";
-            prevPhrase().children = children;
-            prevPhrase().depth = levelsStack.length;
-            prevPhrase().isComponentTag = true;
-            prevPhrase().isOpeningTag = true;
-            prevPhrase().isTagContinued = false;
-
-            levelsStack.push(children.parsedHtmlFragments);
+            levelsStack.push(prevPhrase().parsedHtmlFragments);
           }
 
           isOpeningTag = true;
