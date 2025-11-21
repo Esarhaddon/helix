@@ -277,14 +277,20 @@ function parseTemplateInPlaceV2(template) {
 
   template.parsedHtmlFragments = result;
 
-  template.htmlFragments.forEach((fragment) => {
-    levelsStack.at(-1).push([]);
+  template.htmlFragments.forEach((fragment, i) => {
+    if (!isComponentTag) {
+      levelsStack.at(-1).push([]);
+    }
 
     function prevPhrase() {
-      return levelsStack.at(-1).at(-1).at(-1);
+      return levelsStack.at(-1).at(-1)?.at(-1);
     }
 
     function pushPhrase(phrase) {
+      if (!levelsStack.at(-1).at(-1)) {
+        levelsStack.at(-1).push([]);
+      }
+
       levelsStack.at(-1).at(-1).push(phrase);
     }
 
@@ -375,7 +381,7 @@ function parseTemplateInPlaceV2(template) {
               isOpeningTag: true,
               isTagContinued: false,
               value: "",
-              parsedHtmlFragments: [[]],
+              parsedHtmlFragments: [],
             });
 
             levelsStack.push(prevPhrase().parsedHtmlFragments);
@@ -462,6 +468,22 @@ function parseTemplateInPlaceV2(template) {
       unparsedFragment = controlChars
         ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
         : "";
+
+      // DEV: this would be a little more straight forward if you didn't push
+      // onto the levels stack until after the opening component tag was
+      // closed
+      if (
+        !unparsedFragment &&
+        isComponentTag &&
+        isOpeningTag &&
+        fragment.endsWith(" ") &&
+        levelsStack.at(-2).at(-1).at(-1).isComponentTag
+      ) {
+        const phrase = levelsStack.at(-2).at(-1).at(-1);
+
+        phrase.props ||= [];
+        phrase.props.push({ templateChildIndex: i });
+      }
     }
   }, []);
 }
