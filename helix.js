@@ -546,6 +546,18 @@ function parseTemplateInPlaceV2(template) {
       i !== template.htmlFragments.length - 1
     ) {
       pushPhrase({ identifier: "IDENTIFIER" });
+    } else if (isOpeningTag && !isComponentTag) {
+      console.log("We got an attr");
+      const phrases = levelsStack.at(-1);
+      const start = phrases.findLastIndex((phrase) => phrase.tagStart);
+
+      console.log({ start });
+
+      if (!("identifier" in phrases[start - 1])) {
+        // console.log(phrases[start]);
+        // console.log(phrases[start - 1]);
+        phrases.splice(start, 0, { identifier: "IDENTIFIER" });
+      }
     }
   }, []);
 }
@@ -557,7 +569,7 @@ const template = test`
   <div id="my-div">
     <Component ${{}} id="<_adfa>k<>" ${{}} onClick=${() => {}} />
     hello world
-    <span spanid="my-span<<><'" onclick=${() => {}}></span>
+    <span spanid="my-span<<><'" onclick=${() => {}} id=${{}}></span>
     <input oninput=${() => {}} />
   </div>
   <div>hello world</div>
