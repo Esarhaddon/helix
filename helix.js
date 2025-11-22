@@ -504,7 +504,7 @@ const template = test`
       hello world
       ${{}}
       <div>even moar nested</div>
-      <AnotherComponent>
+      <AnotherComponent ${{ greeting: "hello world" }}>
         <div onclick=${() => {}}>You still need to match tags?</div>
         <div onclick=${() => {}}>Very cool that this is working now</div>
       </AnotherComponent>
