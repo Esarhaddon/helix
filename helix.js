@@ -278,6 +278,11 @@ function parseTemplateInPlaceV2(template) {
   template.parsedHtmlFragments = result;
 
   template.htmlFragments.forEach((fragment, i) => {
+    // DEV: explain
+    if (!isOpeningTag && !isClosingTag && i !== 0) {
+      pushPhrase({ identifier: "IDENTIFIER" });
+    }
+
     // if (!isComponentTag) {
     //   levelsStack.at(-1).push([]);
     // }
@@ -368,13 +373,16 @@ function parseTemplateInPlaceV2(template) {
             // }
           }
 
+          if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
+            isComponentTag = true;
+            pushPhrase({ identifier: "IDENTIFIER" });
+          }
+
           pushPhrase({ tagStart: true, value: "<", isTagContinued: true });
 
           // DEV: if the fragment ends at controlCharsIndex then we've got a
           // syntax error
-          if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
-            isComponentTag = true;
-
+          if (isComponentTag) {
             Object.assign(prevPhrase(), {
               isComponentTag: true,
               tagName: unparsedFragment.slice(
@@ -488,6 +496,13 @@ function parseTemplateInPlaceV2(template) {
             unparsedFragment[controlCharsIndex - 1] !== "/"
           ) {
             levelsStack.push(prevPhrase().parsedHtmlFragments);
+          } else if (
+            // DEV: could maybe dry this up
+            isClosingTag ||
+            unparsedFragment[controlCharsIndex - 1] === "/"
+          ) {
+            // DEV: you'll need to know component depth to get this right
+            pushPhrase({ identifier: "IDENTIFIER" });
           }
 
           isClosingTag = false;
@@ -522,6 +537,15 @@ function parseTemplateInPlaceV2(template) {
           });
         }
       }
+    }
+
+    // DEV: explain
+    if (
+      !isOpeningTag &&
+      !isClosingTag &&
+      i !== template.htmlFragments.length - 1
+    ) {
+      pushPhrase({ identifier: "IDENTIFIER" });
     }
   }, []);
 }
