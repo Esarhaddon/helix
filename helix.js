@@ -278,9 +278,9 @@ function parseTemplateInPlaceV2(template) {
   template.parsedHtmlFragments = result;
 
   template.htmlFragments.forEach((fragment, i) => {
-    if (!isComponentTag) {
-      levelsStack.at(-1).push([]);
-    }
+    // if (!isComponentTag) {
+    //   levelsStack.at(-1).push([]);
+    // }
 
     // DEV: you should flatten your data structure, and then you can have a
     // single function to add a phrase that will determine whether to merge
@@ -290,15 +290,18 @@ function parseTemplateInPlaceV2(template) {
 
     // DEV: this should really be currentPhrase?
     function prevPhrase() {
-      return levelsStack.at(-1).at(-1)?.at(-1);
+      return levelsStack.at(-1).at(-1);
     }
 
-    function pushPhrase(phrase) {
-      if (!levelsStack.at(-1).at(-1)) {
-        levelsStack.at(-1).push([]);
-      }
+    // DEV: when pushing a phrase, you should just need to check for an
+    // identifier when deciding whether or not to merge with the previous phrase
 
-      levelsStack.at(-1).at(-1).push(phrase);
+    function pushPhrase(phrase) {
+      // if (!levelsStack.at(-1).at(-1)) {
+      //   levelsStack.at(-1).push([]);
+      // }
+
+      levelsStack.at(-1).push(phrase);
     }
 
     // DEV: control characters besides ">" and '"' should create new phrases
@@ -330,16 +333,16 @@ function parseTemplateInPlaceV2(template) {
       // DEV: you need to get the component name somehow
 
       if (controlCharsIndex < 0 && !isComponentTag) {
-        if (prevPhrase() && !prevPhrase().isComponentTag) {
-          prevPhrase().value += unparsedFragment;
-        } else {
-          pushPhrase({
-            isAttr,
-            isTag: isOpeningTag,
-            value: unparsedFragment,
-            isTagContinued: isOpeningTag,
-          });
-        }
+        // if (prevPhrase() && !prevPhrase().isComponentTag) {
+        //   prevPhrase().value += unparsedFragment;
+        // } else {
+        pushPhrase({
+          isAttr,
+          isTag: isOpeningTag,
+          value: unparsedFragment,
+          isTagContinued: isOpeningTag,
+        });
+        // }
 
         break;
       }
@@ -353,16 +356,16 @@ function parseTemplateInPlaceV2(template) {
       switch (controlChars) {
         case "<":
           if (controlCharsIndex !== 0) {
-            if (prevPhrase() && !prevPhrase().isComponentTag) {
-              prevPhrase().value += unparsedFragment.slice(
-                0,
-                controlCharsIndex
-              );
-            } else {
-              pushPhrase({
-                value: unparsedFragment.slice(0, controlCharsIndex),
-              });
-            }
+            // if (prevPhrase() && !prevPhrase().isComponentTag) {
+            //   prevPhrase().value += unparsedFragment.slice(
+            //     0,
+            //     controlCharsIndex
+            //   );
+            // } else {
+            pushPhrase({
+              value: unparsedFragment.slice(0, controlCharsIndex),
+            });
+            // }
           }
 
           pushPhrase({ tagStart: true, value: "<", isTagContinued: true });
@@ -405,6 +408,8 @@ function parseTemplateInPlaceV2(template) {
         //   values (probably "=" will need to become a control character)
         case '"':
           if (!isComponentTag) {
+            // DEV: should always make sense to append to the previous phrase here
+            // - you should be able to drop this though
             if (prevPhrase()) {
               prevPhrase().value += unparsedFragment.slice(
                 0,
@@ -446,16 +451,16 @@ function parseTemplateInPlaceV2(template) {
             isComponentTag = true;
           }
 
-          if (prevPhrase() && !prevPhrase().isComponentTag) {
-            prevPhrase().value += unparsedFragment.slice(
-              0,
-              isComponentTag ? controlCharsIndex : controlCharsIndex + 2
-            );
-          } else if (!isComponentTag) {
-            pushPhrase({
-              value: unparsedFragment.slice(0, controlCharsIndex + 2),
-            });
-          }
+          // if (prevPhrase() && !prevPhrase().isComponentTag) {
+          //   prevPhrase().value += unparsedFragment.slice(
+          //     0,
+          //     isComponentTag ? controlCharsIndex : controlCharsIndex + 2
+          //   );
+          // } else if (!isComponentTag) {
+          pushPhrase({
+            value: unparsedFragment.slice(0, controlCharsIndex + 2),
+          });
+          // }
 
           if (isComponentTag) {
             levelsStack.pop();
@@ -468,16 +473,16 @@ function parseTemplateInPlaceV2(template) {
           prevPhrase() && (prevPhrase().isTagContinued = false);
 
           if (!isComponentTag) {
-            if (prevPhrase()) {
-              prevPhrase().value += unparsedFragment.slice(
-                0,
-                controlCharsIndex + 1
-              );
-            } else {
-              pushPhrase({
-                value: unparsedFragment.slice(0, controlCharsIndex + 1),
-              });
-            }
+            // if (prevPhrase()) {
+            //   prevPhrase().value += unparsedFragment.slice(
+            //     0,
+            //     controlCharsIndex + 1
+            //   );
+            // } else {
+            pushPhrase({
+              value: unparsedFragment.slice(0, controlCharsIndex + 1),
+            });
+            // }
           } else if (
             isOpeningTag &&
             unparsedFragment[controlCharsIndex - 1] !== "/"
