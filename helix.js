@@ -252,13 +252,66 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
 // DEV: don't forget to handle self-closing component tags
 // - eventually would be nice to allow all self-closing tags
 
-const cache = {};
-
 // DEV: pushPhrase vs prevPhrase does make things harder to reason about
 // - probably should mostly just move to pushPhrase at some point
 
 // DEV: seems like you could make this simpler if you always just
 // pushed new phrases?
+
+function isMergeable(phrase) {
+  return (
+    phrase &&
+    !("identifier" in phrase) &&
+    !("templateChildIndex" in phrase) &&
+    !phrase.isComponentTag
+  );
+}
+
+// TODO: There's probably a performance cost to not doing this as we go
+function mergePhrases(phrases) {
+  return phrases.reduce((acc, phrase) => {
+    if (!acc.length) {
+      return [phrase];
+    } else {
+      const prev = acc.at(-1);
+
+      if (isMergeable(prev) && isMergeable(phrase)) {
+        return [
+          ...acc.slice(0, -1),
+          { ...prev, value: prev.value + phrase.value },
+        ];
+      } else {
+        return [...acc, phrase];
+      }
+    }
+  }, []);
+}
+
+// // DEV: not quite right,
+// function mergePhrasesInPlace(phrases) {
+//   const phrasesLength = phrases.length;
+//   for (let i = 0; i <= phrasesLength; i++) {
+//     const prev = phrases.at(i - phrasesLength - 1);
+//     const current = phrases.at(i - phrasesLength);
+//     const next = phrases.at(i - phrasesLength + 1);
+
+//     if (isMergeable(prev) && isMergeable(current)) {
+//     } else if (isMergeable(current) && isMergeable(next)) {
+//       console.log("merging...");
+//       current.value += next.value;
+
+//       phrases.splice(i - phrasesLength + 1, 1);
+
+//       i++; // DEV: whoa
+//     }
+//   }
+
+//   console.log("result of merging:", JSON.stringify(phrases, null, 2));
+
+//   // phrases.map((phrase, i, phrases) => {
+
+//   // })
+// }
 
 // DEV: this can be a pure fn?
 function parseTemplateInPlaceV2(template) {
@@ -273,7 +326,7 @@ function parseTemplateInPlaceV2(template) {
   // - you'll need to be able to switch levels mid fragment
 
   const result = [];
-  const levelsStack = [result];
+  const levelsStack = [{ phrases: result }]; // DEV: naming?
 
   template.parsedHtmlFragments = result;
 
@@ -295,7 +348,7 @@ function parseTemplateInPlaceV2(template) {
 
     // DEV: this should really be currentPhrase?
     function prevPhrase() {
-      return levelsStack.at(-1).at(-1);
+      return levelsStack.at(-1).phrases.at(-1);
     }
 
     // DEV: when pushing a phrase, you should just need to check for an
@@ -339,7 +392,7 @@ function parseTemplateInPlaceV2(template) {
       //       "templateChildIndex" in prev ||
       //       prev.isComponentTag))
       // ) {
-      levelsStack.at(-1).push(phrase);
+      levelsStack.at(-1).phrases.push(phrase);
       // } else {
       //   prev.value += phrase.value;
       // }
@@ -501,12 +554,19 @@ function parseTemplateInPlaceV2(template) {
           //     isComponentTag ? controlCharsIndex : controlCharsIndex + 2
           //   );
           // } else if (!isComponentTag) {
-          pushPhrase({
-            value: unparsedFragment.slice(0, controlCharsIndex + 2),
-          });
+
+          if (!isComponentTag) {
+            pushPhrase({
+              value: unparsedFragment.slice(0, controlCharsIndex + 2),
+            });
+          }
           // }
 
           if (isComponentTag) {
+            // mergePhrasesInPlace(levelsStack.at(-1));
+            levelsStack.at(-1).parent.parsedHtmlFragments = mergePhrases(
+              levelsStack.at(-1).phrases
+            );
             levelsStack.pop();
           }
 
@@ -531,7 +591,10 @@ function parseTemplateInPlaceV2(template) {
             isOpeningTag &&
             unparsedFragment[controlCharsIndex - 1] !== "/"
           ) {
-            levelsStack.push(prevPhrase().parsedHtmlFragments);
+            levelsStack.push({
+              parent: prevPhrase(),
+              phrases: prevPhrase().parsedHtmlFragments,
+            });
           } else if (
             // DEV: could maybe dry this up
             isClosingTag ||
@@ -589,7 +652,7 @@ function parseTemplateInPlaceV2(template) {
       pushPhrase({ templateChildIndex: i, type: "slot" }); // DEV: is the index right?
     } else if (isOpeningTag && !isComponentTag) {
       console.log("We got an attr");
-      const phrases = levelsStack.at(-1);
+      const phrases = levelsStack.at(-1).phrases;
       const start = phrases.findLastIndex((phrase) => phrase.tagStart);
 
       console.log({ start });
@@ -606,35 +669,7 @@ function parseTemplateInPlaceV2(template) {
     // pushPhrase({ templateChildIndex: i });
   });
 
-  // DEV: put this somewhere
-
-  function isMergeable(phrase) {
-    return (
-      !("identifier" in phrase) &&
-      !("templateChildIndex" in phrase) &&
-      !phrase.isComponentTag
-    );
-  }
-
-  // DEV: arg
-
-  // DEV: whoops, this only runs at the top level
-  // template.parsedHtmlFragments = result.reduce((acc, phrase) => {
-  //   if (!acc.length) {
-  //     return [phrase];
-  //   } else {
-  //     const prev = acc.at(-1);
-
-  //     if (isMergeable(prev) && isMergeable(phrase)) {
-  //       return [
-  //         ...acc.slice(0, -1),
-  //         { ...prev, value: prev.value + phrase.value },
-  //       ];
-  //     } else {
-  //       return [...acc, phrase];
-  //     }
-  //   }
-  // }, []);
+  template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
 }
 
 const test = getTemplateBuilderV2();
