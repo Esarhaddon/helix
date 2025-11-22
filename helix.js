@@ -384,7 +384,7 @@ function parseTemplateInPlaceV2(template) {
               parsedHtmlFragments: [],
             });
 
-            levelsStack.push(prevPhrase().parsedHtmlFragments);
+            // levelsStack.push(prevPhrase().parsedHtmlFragments);
           }
 
           isOpeningTag = true;
@@ -438,9 +438,6 @@ function parseTemplateInPlaceV2(template) {
 
           break;
         case ">":
-          // DEV: there's some extra work to do if this is for a component
-          // - you need to handle self-closing component tags
-
           prevPhrase() && (prevPhrase().isTagContinued = false);
 
           if (!isComponentTag) {
@@ -454,8 +451,11 @@ function parseTemplateInPlaceV2(template) {
                 value: unparsedFragment.slice(0, controlCharsIndex + 1),
               });
             }
-          } else if (unparsedFragment[controlCharsIndex - 1] === "/") {
-            levelsStack.pop();
+          } else if (
+            isOpeningTag &&
+            unparsedFragment[controlCharsIndex - 1] !== "/"
+          ) {
+            levelsStack.push(prevPhrase().parsedHtmlFragments);
           }
 
           isClosingTag = false;
@@ -469,20 +469,16 @@ function parseTemplateInPlaceV2(template) {
         ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
         : "";
 
-      // DEV: this would be a little more straight forward if you didn't push
-      // onto the levels stack until after the opening component tag was
-      // closed
+      // DEV: handle attributes as well
       if (
         !unparsedFragment &&
         isComponentTag &&
         isOpeningTag &&
         fragment.endsWith(" ") &&
-        levelsStack.at(-2).at(-1).at(-1).isComponentTag
+        prevPhrase().isComponentTag
       ) {
-        const phrase = levelsStack.at(-2).at(-1).at(-1);
-
-        phrase.props ||= [];
-        phrase.props.push({ templateChildIndex: i });
+        prevPhrase().props ||= [];
+        prevPhrase().props.push({ templateChildIndex: i });
       }
     }
   }, []);
