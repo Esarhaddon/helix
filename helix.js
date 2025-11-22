@@ -308,7 +308,41 @@ function parseTemplateInPlaceV2(template) {
       //   levelsStack.at(-1).push([]);
       // }
 
+      // const mergeFrom =
+      //   levelsStack
+      //     .at(-1)
+      //     .findLastIndex(
+      //       (phrase) => "identifier" in phrase || "templateChildIndex" in phrase
+      //     ) + 1;
+
+      // const mergeTo =
+      //   phrase.tagStart || "identifier" in phrase
+      //     ? levelsStack.at(-1).length - 1
+      //     : levelsStack.at(-1).findLastIndex((phrase) => phrase.tagStart);
+
+      // if (mergeFrom !== mergeTo) {
+      //   const [target, ...phrasesToMerge] = levelsStack
+      //     .at(-1)
+      //     .slice(mergeFrom, mergeTo);
+
+      //   phrasesToMerge.forEach((phrase) => (target.value += phrase.value));
+
+      //   levelsStack.at(-1).splice(mergeFrom + 1, phrasesToMerge.length);
+      // }
+
+      // const prev = prevPhrase();
+
+      // if (
+      //   !prev ||
+      //   (prev &&
+      //     ("identifier" in prev ||
+      //       "templateChildIndex" in prev ||
+      //       prev.isComponentTag))
+      // ) {
       levelsStack.at(-1).push(phrase);
+      // } else {
+      //   prev.value += phrase.value;
+      // }
     }
 
     // DEV: control characters besides ">" and '"' should create new phrases
@@ -560,16 +594,47 @@ function parseTemplateInPlaceV2(template) {
 
       console.log({ start });
 
-      if (!("identifier" in phrases[start - 1])) {
+      if (!phrases[start - 1] || !("identifier" in phrases[start - 1])) {
         // console.log(phrases[start]);
         // console.log(phrases[start - 1]);
         phrases.splice(start, 0, { identifier: "IDENTIFIER" });
-        pushPhrase({ templateChildIndex: i, type: "attribute" });
       }
+
+      pushPhrase({ templateChildIndex: i, type: "attribute" });
     }
 
     // pushPhrase({ templateChildIndex: i });
-  }, []);
+  });
+
+  // DEV: put this somewhere
+
+  function isMergeable(phrase) {
+    return (
+      !("identifier" in phrase) &&
+      !("templateChildIndex" in phrase) &&
+      !phrase.isComponentTag
+    );
+  }
+
+  // DEV: arg
+
+  // DEV: whoops, this only runs at the top level
+  // template.parsedHtmlFragments = result.reduce((acc, phrase) => {
+  //   if (!acc.length) {
+  //     return [phrase];
+  //   } else {
+  //     const prev = acc.at(-1);
+
+  //     if (isMergeable(prev) && isMergeable(phrase)) {
+  //       return [
+  //         ...acc.slice(0, -1),
+  //         { ...prev, value: prev.value + phrase.value },
+  //       ];
+  //     } else {
+  //       return [...acc, phrase];
+  //     }
+  //   }
+  // }, []);
 }
 
 const test = getTemplateBuilderV2();
@@ -579,7 +644,7 @@ const template = test`
   <div id="my-div">
     <Component ${{}} id="<_adfa>k<>" ${{}} onClick=${() => {}} />
     hello world
-    <span spanid="my-span<<><'" onclick=${() => {}} id=${{}}></span>
+    <span spanid="my-span<<><'" id=${{}} onclick=${() => {}}></span>
     <input oninput=${() => {}} />
   </div>
   <div>hello world</div>
