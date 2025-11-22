@@ -409,6 +409,26 @@ function parseTemplateInPlaceV2(template) {
                 isTagContinued: true,
               });
             }
+          } else if (!isAttr) {
+            // DEV: explain this
+            // - hmm this is all getting pretty convoluted, wonder if there's a
+            //   way to simplify
+            const name = unparsedFragment.slice(
+              unparsedFragment
+                .slice(0, controlCharsIndex - 1)
+                .lastIndexOf(" ") + 1,
+              controlCharsIndex - 1
+            );
+
+            const value = unparsedFragment.slice(
+              controlCharsIndex + 1,
+              controlCharsIndex +
+                1 +
+                unparsedFragment.slice(controlCharsIndex + 1).indexOf('"')
+            );
+
+            prevPhrase().attrs ||= [];
+            prevPhrase().attrs.push({ name, value });
           }
 
           isAttr = !isAttr;
@@ -499,18 +519,21 @@ const test = getTemplateBuilderV2();
 const template = test`
   this is just a string
   <div id="my-div">
-    <Component ${{}} id="<_adfa>k<>" ${{}} />
+    <Component ${{}} id="<_adfa>k<>" ${{}} onClick=${() => {}} />
     hello world
     <span spanid="my-span<<><'" onclick=${() => {}}></span>
     <input oninput=${() => {}} />
   </div>
   <div>hello world</div>
-  <Component onClick=${() => {}}>
+  <Component onClick=${() => {}} id=${null}>
     <span>
       hello world
       ${{}}
       <div>even moar nested</div>
-      <AnotherComponent ${{ greeting: "hello world" }}>
+      <AnotherComponent 
+        ${{ greeting: "hello world" }} 
+        class="my-class"
+      >
         <div onclick=${() => {}}>You still need to match tags?</div>
         <div onclick=${() => {}}>Very cool that this is working now</div>
       </AnotherComponent>
