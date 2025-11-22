@@ -301,6 +301,8 @@ function parseTemplateInPlaceV2(template) {
     // DEV: when pushing a phrase, you should just need to check for an
     // identifier when deciding whether or not to merge with the previous phrase
 
+    // DEV: every time you push a phrase, you should be able to merge previous
+    // phrases, up to but not including the current one if it's a tagStart
     function pushPhrase(phrase) {
       // if (!levelsStack.at(-1).at(-1)) {
       //   levelsStack.at(-1).push([]);
@@ -539,6 +541,10 @@ function parseTemplateInPlaceV2(template) {
       }
     }
 
+    // DEV: don't think you need is tag continued after all
+
+    // DEV: you need phrase types
+
     // DEV: explain
     if (
       !isOpeningTag &&
@@ -546,6 +552,7 @@ function parseTemplateInPlaceV2(template) {
       i !== template.htmlFragments.length - 1
     ) {
       pushPhrase({ identifier: "IDENTIFIER" });
+      pushPhrase({ templateChildIndex: i, type: "slot" }); // DEV: is the index right?
     } else if (isOpeningTag && !isComponentTag) {
       console.log("We got an attr");
       const phrases = levelsStack.at(-1);
@@ -557,8 +564,11 @@ function parseTemplateInPlaceV2(template) {
         // console.log(phrases[start]);
         // console.log(phrases[start - 1]);
         phrases.splice(start, 0, { identifier: "IDENTIFIER" });
+        pushPhrase({ templateChildIndex: i, type: "attribute" });
       }
     }
+
+    // pushPhrase({ templateChildIndex: i });
   }, []);
 }
 
