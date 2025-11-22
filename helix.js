@@ -282,6 +282,13 @@ function parseTemplateInPlaceV2(template) {
       levelsStack.at(-1).push([]);
     }
 
+    // DEV: you should flatten your data structure, and then you can have a
+    // single function to add a phrase that will determine whether to merge
+    // previous phrases, insert an identifier, etc.
+    // - fragments will no longer be reflected in the final data structure,
+    //   other than place holders for identifiers
+
+    // DEV: this should really be currentPhrase?
     function prevPhrase() {
       return levelsStack.at(-1).at(-1)?.at(-1);
     }
