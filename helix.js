@@ -469,16 +469,26 @@ function parseTemplateInPlaceV2(template) {
         ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
         : "";
 
-      // DEV: handle attributes as well
       if (
         !unparsedFragment &&
         isComponentTag &&
         isOpeningTag &&
-        fragment.endsWith(" ") &&
         prevPhrase().isComponentTag
       ) {
-        prevPhrase().props ||= [];
-        prevPhrase().props.push({ templateChildIndex: i });
+        if (fragment.endsWith(" ")) {
+          // Parse component props
+
+          prevPhrase().props ||= [];
+          prevPhrase().props.push({ templateChildIndex: i });
+        } else if (fragment.endsWith("=")) {
+          // Parse interpolated component attrs
+
+          prevPhrase().attrs ||= [];
+          prevPhrase().attrs.push({
+            templateChildIndex: i,
+            name: fragment.slice(fragment.lastIndexOf(" ") + 1, -1),
+          });
+        }
       }
     }
   }, []);
@@ -495,7 +505,7 @@ const template = test`
     <input oninput=${() => {}} />
   </div>
   <div>hello world</div>
-  <Component>
+  <Component onClick=${() => {}}>
     <span>
       hello world
       ${{}}
