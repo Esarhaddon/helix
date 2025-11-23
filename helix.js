@@ -320,7 +320,6 @@ function parseTemplateInPlaceV2(template) {
           isAttr,
           isTag: isOpeningTag,
           value: unparsedFragment,
-          isTagContinued: isOpeningTag,
         });
 
         break;
@@ -345,7 +344,7 @@ function parseTemplateInPlaceV2(template) {
             pushPhrase({ identifier: "IDENTIFIER" });
           }
 
-          pushPhrase({ tagStart: true, value: "<", isTagContinued: true });
+          pushPhrase({ tagStart: true, value: "<" });
 
           if (isComponentTag) {
             Object.assign(prevPhrase(), {
@@ -362,7 +361,6 @@ function parseTemplateInPlaceV2(template) {
                     .findIndex((char) => !/[a-z0-9]/i.test(char))
               ),
               isOpeningTag: true,
-              isTagContinued: false,
               value: "",
               parsedHtmlFragments: [],
             });
@@ -375,7 +373,6 @@ function parseTemplateInPlaceV2(template) {
           if (!isComponentTag) {
             pushPhrase({
               value: unparsedFragment.slice(0, controlCharsIndex + 1),
-              isTagContinued: true,
             });
           } else if (!isAttr) {
             // Handle component attributes
@@ -421,8 +418,6 @@ function parseTemplateInPlaceV2(template) {
 
           break;
         case ">":
-          prevPhrase() && (prevPhrase().isTagContinued = false);
-
           if (!isComponentTag) {
             pushPhrase({
               value: unparsedFragment.slice(0, controlCharsIndex + 1),
@@ -472,8 +467,6 @@ function parseTemplateInPlaceV2(template) {
         }
       }
     }
-
-    // DEV: don't think you need is tag continued after all
 
     // Handle slots and non-component attributes
     if (
