@@ -239,25 +239,6 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   };
 }
 
-// DEV: plan for parsing component children
-// - add a components array to the template
-// - every time you come across a component in the template add it to the array
-// - if you encounter a component with an opening tag add a children property
-// - keep a reference to the currently open component tag and add new phrases to
-//   a template in that component's children property
-// - remove items from the top level templateChildren array
-// - keep track of closting component tags and jump back to the previous
-//   reference when one component is closed
-
-// DEV: don't forget to handle self-closing component tags
-// - eventually would be nice to allow all self-closing tags
-
-// DEV: pushPhrase vs prevPhrase does make things harder to reason about
-// - probably should mostly just move to pushPhrase at some point
-
-// DEV: seems like you could make this simpler if you always just
-// pushed new phrases?
-
 function isMergeable(phrase) {
   return (
     phrase &&
@@ -287,43 +268,12 @@ function mergePhrases(phrases) {
   }, []);
 }
 
-// // DEV: not quite right,
-// function mergePhrasesInPlace(phrases) {
-//   const phrasesLength = phrases.length;
-//   for (let i = 0; i <= phrasesLength; i++) {
-//     const prev = phrases.at(i - phrasesLength - 1);
-//     const current = phrases.at(i - phrasesLength);
-//     const next = phrases.at(i - phrasesLength + 1);
-
-//     if (isMergeable(prev) && isMergeable(current)) {
-//     } else if (isMergeable(current) && isMergeable(next)) {
-//       console.log("merging...");
-//       current.value += next.value;
-
-//       phrases.splice(i - phrasesLength + 1, 1);
-
-//       i++; // DEV: whoa
-//     }
-//   }
-
-//   console.log("result of merging:", JSON.stringify(phrases, null, 2));
-
-//   // phrases.map((phrase, i, phrases) => {
-
-//   // })
-// }
-
 // DEV: this can be a pure fn?
 function parseTemplateInPlaceV2(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
   let isComponentTag = false;
   let isAttr = false;
-
-  // DEV
-
-  // DEV: push parsed html onto the last level in the level stack
-  // - you'll need to be able to switch levels mid fragment
 
   const result = [];
   const levelsStack = [{ phrases: result }]; // DEV: naming?
@@ -336,71 +286,13 @@ function parseTemplateInPlaceV2(template) {
       pushPhrase({ identifier: "IDENTIFIER" });
     }
 
-    // if (!isComponentTag) {
-    //   levelsStack.at(-1).push([]);
-    // }
-
-    // DEV: you should flatten your data structure, and then you can have a
-    // single function to add a phrase that will determine whether to merge
-    // previous phrases, insert an identifier, etc.
-    // - fragments will no longer be reflected in the final data structure,
-    //   other than place holders for identifiers
-
-    // DEV: this should really be currentPhrase?
     function prevPhrase() {
       return levelsStack.at(-1).phrases.at(-1);
     }
 
-    // DEV: when pushing a phrase, you should just need to check for an
-    // identifier when deciding whether or not to merge with the previous phrase
-
-    // DEV: every time you push a phrase, you should be able to merge previous
-    // phrases, up to but not including the current one if it's a tagStart
     function pushPhrase(phrase) {
-      // if (!levelsStack.at(-1).at(-1)) {
-      //   levelsStack.at(-1).push([]);
-      // }
-
-      // const mergeFrom =
-      //   levelsStack
-      //     .at(-1)
-      //     .findLastIndex(
-      //       (phrase) => "identifier" in phrase || "templateChildIndex" in phrase
-      //     ) + 1;
-
-      // const mergeTo =
-      //   phrase.tagStart || "identifier" in phrase
-      //     ? levelsStack.at(-1).length - 1
-      //     : levelsStack.at(-1).findLastIndex((phrase) => phrase.tagStart);
-
-      // if (mergeFrom !== mergeTo) {
-      //   const [target, ...phrasesToMerge] = levelsStack
-      //     .at(-1)
-      //     .slice(mergeFrom, mergeTo);
-
-      //   phrasesToMerge.forEach((phrase) => (target.value += phrase.value));
-
-      //   levelsStack.at(-1).splice(mergeFrom + 1, phrasesToMerge.length);
-      // }
-
-      // const prev = prevPhrase();
-
-      // if (
-      //   !prev ||
-      //   (prev &&
-      //     ("identifier" in prev ||
-      //       "templateChildIndex" in prev ||
-      //       prev.isComponentTag))
-      // ) {
       levelsStack.at(-1).phrases.push(phrase);
-      // } else {
-      //   prev.value += phrase.value;
-      // }
     }
-
-    // DEV: control characters besides ">" and '"' should create new phrases
-    // if the previous phrase was for a component
-    // - maybe something you could build into a helper function
 
     let unparsedFragment = fragment;
     while (unparsedFragment.length) {
@@ -413,10 +305,9 @@ function parseTemplateInPlaceV2(template) {
             unparsedFragment[i + 1] !== "/") ||
           // Attribute start or end
           (isOpeningTag && char === '"') ||
-          // DEV: this only matter if there's an open component tag
-
-          // Closing tag start
-          (!isOpeningTag &&
+          // Closing tag start (only matters for component tags)
+          (levelsStack.length > 1 &&
+            !isOpeningTag &&
             !isAttr &&
             char === "<" &&
             unparsedFragment[i + 1] === "/") ||
@@ -424,19 +315,13 @@ function parseTemplateInPlaceV2(template) {
           (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")
       );
 
-      // DEV: you need to get the component name somehow
-
       if (controlCharsIndex < 0 && !isComponentTag) {
-        // if (prevPhrase() && !prevPhrase().isComponentTag) {
-        //   prevPhrase().value += unparsedFragment;
-        // } else {
         pushPhrase({
           isAttr,
           isTag: isOpeningTag,
           value: unparsedFragment,
           isTagContinued: isOpeningTag,
         });
-        // }
 
         break;
       }
@@ -450,16 +335,11 @@ function parseTemplateInPlaceV2(template) {
       switch (controlChars) {
         case "<":
           if (controlCharsIndex !== 0) {
-            // if (prevPhrase() && !prevPhrase().isComponentTag) {
-            //   prevPhrase().value += unparsedFragment.slice(
-            //     0,
-            //     controlCharsIndex
-            //   );
-            // } else {
+            // DEV: do you need to insert an identifier here?
+            // - when does this happen?
             pushPhrase({
               value: unparsedFragment.slice(0, controlCharsIndex),
             });
-            // }
           }
 
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
@@ -490,38 +370,20 @@ function parseTemplateInPlaceV2(template) {
               value: "",
               parsedHtmlFragments: [],
             });
-
-            // levelsStack.push(prevPhrase().parsedHtmlFragments);
           }
 
           isOpeningTag = true;
 
           break;
-
-        // DEV: you probably should allow attributes on components
-        // - but maybe just ignore them for now?
-        // - actually, shouldn't be too difficult to add support for this
-        // - will require extra work to support attributes with interpolated
-        //   values (probably "=" will need to become a control character)
         case '"':
           if (!isComponentTag) {
-            // DEV: should always make sense to append to the previous phrase here
-            // - you should be able to drop this though
-            if (prevPhrase()) {
-              prevPhrase().value += unparsedFragment.slice(
-                0,
-                controlCharsIndex + 1
-              );
-            } else {
-              pushPhrase({
-                value: unparsedFragment.slice(0, controlCharsIndex + 1),
-                isTagContinued: true,
-              });
-            }
+            pushPhrase({
+              value: unparsedFragment.slice(0, controlCharsIndex + 1),
+              isTagContinued: true,
+            });
           } else if (!isAttr) {
-            // DEV: explain this
-            // - hmm this is all getting pretty convoluted, wonder if there's a
-            //   way to simplify
+            // Handle component attributes
+
             const name = unparsedFragment.slice(
               unparsedFragment
                 .slice(0, controlCharsIndex - 1)
@@ -546,28 +408,17 @@ function parseTemplateInPlaceV2(template) {
         case "</":
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 2])) {
             isComponentTag = true;
-          }
 
-          // if (prevPhrase() && !prevPhrase().isComponentTag) {
-          //   prevPhrase().value += unparsedFragment.slice(
-          //     0,
-          //     isComponentTag ? controlCharsIndex : controlCharsIndex + 2
-          //   );
-          // } else if (!isComponentTag) {
+            levelsStack.at(-1).parent.parsedHtmlFragments = mergePhrases(
+              levelsStack.at(-1).phrases
+            );
+            levelsStack.pop();
+          }
 
           if (!isComponentTag) {
             pushPhrase({
               value: unparsedFragment.slice(0, controlCharsIndex + 2),
             });
-          }
-          // }
-
-          if (isComponentTag) {
-            // mergePhrasesInPlace(levelsStack.at(-1));
-            levelsStack.at(-1).parent.parsedHtmlFragments = mergePhrases(
-              levelsStack.at(-1).phrases
-            );
-            levelsStack.pop();
           }
 
           isClosingTag = true;
@@ -577,16 +428,9 @@ function parseTemplateInPlaceV2(template) {
           prevPhrase() && (prevPhrase().isTagContinued = false);
 
           if (!isComponentTag) {
-            // if (prevPhrase()) {
-            //   prevPhrase().value += unparsedFragment.slice(
-            //     0,
-            //     controlCharsIndex + 1
-            //   );
-            // } else {
             pushPhrase({
               value: unparsedFragment.slice(0, controlCharsIndex + 1),
             });
-            // }
           } else if (
             isOpeningTag &&
             unparsedFragment[controlCharsIndex - 1] !== "/"
@@ -627,7 +471,7 @@ function parseTemplateInPlaceV2(template) {
           prevPhrase().props ||= [];
           prevPhrase().props.push({ templateChildIndex: i });
         } else if (fragment.endsWith("=")) {
-          // Parse interpolated component attrs
+          // Parse interpolated component attributes
 
           prevPhrase().attrs ||= [];
           prevPhrase().attrs.push({
@@ -651,22 +495,15 @@ function parseTemplateInPlaceV2(template) {
       pushPhrase({ identifier: "IDENTIFIER" });
       pushPhrase({ templateChildIndex: i, type: "slot" }); // DEV: is the index right?
     } else if (isOpeningTag && !isComponentTag) {
-      console.log("We got an attr");
       const phrases = levelsStack.at(-1).phrases;
       const start = phrases.findLastIndex((phrase) => phrase.tagStart);
 
-      console.log({ start });
-
       if (!phrases[start - 1] || !("identifier" in phrases[start - 1])) {
-        // console.log(phrases[start]);
-        // console.log(phrases[start - 1]);
         phrases.splice(start, 0, { identifier: "IDENTIFIER" });
       }
 
       pushPhrase({ templateChildIndex: i, type: "attribute" });
     }
-
-    // pushPhrase({ templateChildIndex: i });
   });
 
   template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
