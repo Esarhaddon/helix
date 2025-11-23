@@ -16,10 +16,6 @@ const propsByNodeKey = {};
 const propsByParentNodeKey = {};
 const previousPropsByNodeKey = {};
 
-// DEV:
-// - build the data structure
-// - parse it for rendering
-
 let currentInstanceKey;
 let currentInstanceSignalIndex = 0;
 
@@ -222,7 +218,6 @@ function parseComponents(html, components) {
 
 function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   return (strings, ...children) => {
-    // DEV: one of these is read only?
     const htmlFragments = [...(strings || defaultStrings)];
 
     htmlFragments[0] = htmlFragments[0].trimLeft();
@@ -268,7 +263,6 @@ function mergePhrases(phrases) {
   }, []);
 }
 
-// DEV: this can be a pure fn?
 function parseTemplateInPlaceV2(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
