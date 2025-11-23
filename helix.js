@@ -276,12 +276,12 @@ function parseTemplateInPlaceV2(template) {
   let isAttr = false;
 
   const result = [];
-  const levelsStack = [{ phrases: result }]; // DEV: naming?
+  const levelsStack = [{ phrases: result }];
 
   template.parsedHtmlFragments = result;
 
   template.htmlFragments.forEach((fragment, i) => {
-    // DEV: explain
+    // Add a closing identifier for slots
     if (!isOpeningTag && !isClosingTag && i !== 0) {
       pushPhrase({ identifier: "IDENTIFIER" });
     }
@@ -335,8 +335,6 @@ function parseTemplateInPlaceV2(template) {
       switch (controlChars) {
         case "<":
           if (controlCharsIndex !== 0) {
-            // DEV: do you need to insert an identifier here?
-            // - when does this happen?
             pushPhrase({
               value: unparsedFragment.slice(0, controlCharsIndex),
             });
@@ -349,8 +347,6 @@ function parseTemplateInPlaceV2(template) {
 
           pushPhrase({ tagStart: true, value: "<", isTagContinued: true });
 
-          // DEV: if the fragment ends at controlCharsIndex then we've got a
-          // syntax error
           if (isComponentTag) {
             Object.assign(prevPhrase(), {
               isComponentTag: true,
@@ -440,11 +436,9 @@ function parseTemplateInPlaceV2(template) {
               phrases: prevPhrase().parsedHtmlFragments,
             });
           } else if (
-            // DEV: could maybe dry this up
             isClosingTag ||
             unparsedFragment[controlCharsIndex - 1] === "/"
           ) {
-            // DEV: you'll need to know component depth to get this right
             pushPhrase({ identifier: "IDENTIFIER" });
           }
 
@@ -459,6 +453,7 @@ function parseTemplateInPlaceV2(template) {
         ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
         : "";
 
+      // Handle component props and interpolated attributes
       if (
         !unparsedFragment &&
         isComponentTag &&
@@ -466,13 +461,9 @@ function parseTemplateInPlaceV2(template) {
         prevPhrase().isComponentTag
       ) {
         if (fragment.endsWith(" ")) {
-          // Parse component props
-
           prevPhrase().props ||= [];
           prevPhrase().props.push({ templateChildIndex: i });
         } else if (fragment.endsWith("=")) {
-          // Parse interpolated component attributes
-
           prevPhrase().attrs ||= [];
           prevPhrase().attrs.push({
             templateChildIndex: i,
@@ -484,16 +475,14 @@ function parseTemplateInPlaceV2(template) {
 
     // DEV: don't think you need is tag continued after all
 
-    // DEV: you need phrase types
-
-    // DEV: explain
+    // Handle slots and non-component attributes
     if (
       !isOpeningTag &&
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
       pushPhrase({ identifier: "IDENTIFIER" });
-      pushPhrase({ templateChildIndex: i, type: "slot" }); // DEV: is the index right?
+      pushPhrase({ templateChildIndex: i, type: "slot" });
     } else if (isOpeningTag && !isComponentTag) {
       const phrases = levelsStack.at(-1).phrases;
       const start = phrases.findLastIndex((phrase) => phrase.tagStart);
