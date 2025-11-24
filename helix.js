@@ -266,25 +266,21 @@ function mergePhrases(phrases) {
 // DEV: you can get rid of isAttr and isTag in the output?
 
 function parseTemplateInPlaceV2(template) {
-  // DEV: this isn't quite right, suffix needs to live on items in the levels
-  // stack and then get prepended to each time the stack grows
-  // - you'll also probably want to use an array
-  // let suffix = 0;
-
   let isOpeningTag = false;
   let isClosingTag = false;
   let isComponentTag = false;
   let isAttr = false;
 
   const result = [];
-  const levelsStack = [{ suffix: 0, phrases: result }];
+  const levelsStack = [{ suffix: [0], phrases: result }];
 
   function getSuffix() {
-    return levelsStack.at(-1).suffix;
+    return [...levelsStack.at(-1).suffix];
   }
 
   function incSuffix() {
-    levelsStack.at(-1).suffix++;
+    const suffix = levelsStack.at(-1).suffix;
+    suffix[suffix.length - 1]++;
   }
 
   function prevPhrase() {
@@ -443,7 +439,7 @@ function parseTemplateInPlaceV2(template) {
 
             levelsStack.push({
               parent: prevPhrase(),
-              suffix: 0,
+              suffix: [...getSuffix(), 0],
               phrases: prevPhrase().parsedHtmlFragments,
             });
           } else if (
