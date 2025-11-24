@@ -243,7 +243,7 @@ function isMergeable(phrase) {
   );
 }
 
-// TODO: There's probably a performance cost to not doing this as we go
+// TODO: There's probably a performance cost to not doing this on the fly
 function mergePhrases(phrases) {
   return phrases.reduce((acc, phrase) => {
     if (!acc.length) {
@@ -263,29 +263,45 @@ function mergePhrases(phrases) {
   }, []);
 }
 
+// DEV: you can get rid of isAttr and isTag in the output?
+
 function parseTemplateInPlaceV2(template) {
+  // DEV: this isn't quite right, suffix needs to live on items in the levels
+  // stack and then get prepended to each time the stack grows
+  // - you'll also probably want to use an array
+  // let suffix = 0;
+
   let isOpeningTag = false;
   let isClosingTag = false;
   let isComponentTag = false;
   let isAttr = false;
 
   const result = [];
-  const levelsStack = [{ phrases: result }];
+  const levelsStack = [{ suffix: 0, phrases: result }];
+
+  function getSuffix() {
+    return levelsStack.at(-1).suffix;
+  }
+
+  function incSuffix() {
+    levelsStack.at(-1).suffix++;
+  }
+
+  function prevPhrase() {
+    return levelsStack.at(-1).phrases.at(-1);
+  }
+
+  function pushPhrase(phrase) {
+    levelsStack.at(-1).phrases.push(phrase);
+  }
 
   template.parsedHtmlFragments = result;
 
   template.htmlFragments.forEach((fragment, i) => {
     // Add a closing identifier for slots
     if (!isOpeningTag && !isClosingTag && i !== 0) {
-      pushPhrase({ identifier: "IDENTIFIER" });
-    }
-
-    function prevPhrase() {
-      return levelsStack.at(-1).phrases.at(-1);
-    }
-
-    function pushPhrase(phrase) {
-      levelsStack.at(-1).phrases.push(phrase);
+      pushPhrase({ identifier: "IDENTIFIER", suffix: getSuffix() });
+      incSuffix();
     }
 
     let unparsedFragment = fragment;
@@ -335,7 +351,9 @@ function parseTemplateInPlaceV2(template) {
 
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
             isComponentTag = true;
-            pushPhrase({ identifier: "IDENTIFIER" });
+
+            // Don't increment the suffix since this is an opening tag
+            pushPhrase({ identifier: "IDENTIFIER", suffix: getSuffix() });
           }
 
           pushPhrase({ tagStart: true, value: "<" });
@@ -369,7 +387,7 @@ function parseTemplateInPlaceV2(template) {
               value: unparsedFragment.slice(0, controlCharsIndex + 1),
             });
           } else if (!isAttr) {
-            // Handle component attributes
+            // Handle interpolated component attributes
 
             const name = unparsedFragment.slice(
               unparsedFragment
@@ -420,15 +438,20 @@ function parseTemplateInPlaceV2(template) {
             isOpeningTag &&
             unparsedFragment[controlCharsIndex - 1] !== "/"
           ) {
+            const suffix = getSuffix();
+            console.log({ suffix });
+
             levelsStack.push({
               parent: prevPhrase(),
+              suffix: 0,
               phrases: prevPhrase().parsedHtmlFragments,
             });
           } else if (
             isClosingTag ||
             unparsedFragment[controlCharsIndex - 1] === "/"
           ) {
-            pushPhrase({ identifier: "IDENTIFIER" });
+            pushPhrase({ identifier: "IDENTIFIER", suffix: getSuffix() });
+            incSuffix();
           }
 
           isClosingTag = false;
@@ -468,14 +491,19 @@ function parseTemplateInPlaceV2(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
-      pushPhrase({ identifier: "IDENTIFIER" });
+      // Don't increment the suffix since this marks the beginning of the slot
+      pushPhrase({ identifier: "IDENTIFIER", suffix: getSuffix() });
       pushPhrase({ templateChildIndex: i, type: "slot" });
     } else if (isOpeningTag && !isComponentTag) {
       const phrases = levelsStack.at(-1).phrases;
       const start = phrases.findLastIndex((phrase) => phrase.tagStart);
 
       if (!phrases[start - 1] || !("identifier" in phrases[start - 1])) {
-        phrases.splice(start, 0, { identifier: "IDENTIFIER" });
+        phrases.splice(start, 0, {
+          identifier: "IDENTIFIER",
+          suffix: getSuffix(),
+        });
+        incSuffix();
       }
 
       pushPhrase({ templateChildIndex: i, type: "attribute" });
