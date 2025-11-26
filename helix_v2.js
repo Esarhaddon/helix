@@ -322,6 +322,19 @@ parseTemplateInPlaceV2(template);
 
 console.log(JSON.stringify(template, null, 2));
 
+// DEV: for the index file, you should go with something like this:
+
+/*
+
+import * as components from "./app.js"
+
+const root = createRoot.document.getElementById("root")
+
+root.register(components)
+root.render(components.App)
+ 
+ */
+
 // DEV: if you go the export * path you can get around having to export an hlx
 // const as well by adding components to each exported fn or obj that meets your
 // criteria
