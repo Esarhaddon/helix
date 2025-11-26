@@ -322,142 +322,60 @@ parseTemplateInPlaceV2(template);
 
 console.log(JSON.stringify(template, null, 2));
 
-const Component = (props) => {
-  // ...
-};
-
-const CTA = (props) => {
-  // ...
-};
-
-// Actually, you could go this route since you control the function return value
-function App() {
-  return html`
-    <h1>Hello world</h1>
-    ${CTA()}
-    ${Component({
-      onClick: () => {},
-      id: "my-component",
-    })`
-      <div>
-        how about something like this?
-      </div>
-      <button
-        onclick=${() => {
-          // ...
-        }}
-      >
-        submit
-      </button>
-    `}
-    <div>the end</div>
-  `;
-}
-
-// DEV: this is pretty gross though
-function App() {
-  return html`
-    ${CTA()`
-      ${CTA()`
-        ${CTA()}
-      `}
-    `}
-  `;
-}
-
-// DEV: vs HML
-// - alright, this is better than the other stuff
-
-function App() {
-  return html`
-    <h1>Hello world</h1>
-    <${CTA} />
-    <${Component} ...${props}>
-      <button
-        onClick=${() => {
-          // ...
-        }}
-      >
-        submit
-      </button>
-    <//>
-  `;
-}
-
-// DEV: but I still like this more
-// - if you allow the <//> then that saves you typing the component name once,
-//   which you can re-use at html = components(CTA, Component)
-
-// const hlx = helix(); // DEV: this should be something like getTemplate, makeTemplate, getHlx?
-
-// DEV: this is actually pretty slick since it prevents renaming the symbol from
-// breaking the lookup
-// hlx.components = { CTA, Component };
-
-// DEV: actually, if you go the export * path you can get around having to
-// export an hlx const as well by adding components to each exported fn or obj
-// that meets your criteria
+// DEV: if you go the export * path you can get around having to export an hlx
+// const as well by adding components to each exported fn or obj that meets your
+// criteria
 // - you can pass components to the rendering logic the same way that you do the
 //   current instance id
 // - you may need some kind of FIFO stack to track rendering comoponents
 
-const hlx = template({
-  CTA,
-  Component,
-});
+// DEV: if a js fn can tell know what file it's defined in then you might also
+// be able to combine this with some kind of global registry fn
+// - that's import.meta:
+//   https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import.meta
+// - actually wouldn't work?
+// - or you'd have to do something like this:
+//   - but then what about conflicts? you'd end up using components from other
+//     modules whether you wanted to or not
 
-function App() {
-  return hlx`
-    <h1>Hello world</h1>
-    <CTA />
-    <Component ${props}>
-      <button
-        onClick=${() => {
-          // ...
-        }}
-      >
-        submit
-      </button>
-    <//>
-  `;
-}
+/*
 
-// DEV: is this better?
-// - maybe slightly
-function App() {
-  return html`
-    ${CTA({
-      children: CTA({
-        children: CTA({
-          children: CTA(),
-        }),
-      }),
-    })}
-  `;
-}
+const hlx = getHlx(import.meta.url)
 
-// What about this?
-function App() {
-  return hlx`
-    <h1>Hello world</h1>
-    ${CTA()}
-    ${Component(
-      {
-        onClick: () => {},
-        id: "my-component",
-      },
-      hlx`
-        <div>
-          how about something like this?
-        </div>
-        <button
-          onclick=${() => {
-            // ...
-          }}
-        >
-          submit
-        </button>
-      `
-    )}
-  `;
-}
+export Counter = hlx.c(() => {
+  // ...  
+})
+
+*/
+
+// DEV: another alternative would be to adopt an explicit import syntax like
+// this:
+
+/*
+
+hlx.import({ 
+  Counter: import("@components/counter.js")
+})
+
+// or maybe:
+
+hlx.import("Counter", "@components/counter.js")
+
+// I think this would still require something like the following in counter.js
+// though:
+
+const hlx = makeTemplate()
+
+export const Counter = hlx.c(() => {
+  // ...
+})
+
+export const Button = hlx.c(() => {
+  // ...
+})
+
+// ^^^ would the name property get added? how ubiquitious is browser support
+// for that?
+// - looks like not
+
+*/
