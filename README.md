@@ -31,10 +31,10 @@ And in `index.html` add:
   <head>
     <script type="module">
       import { createRoot } from "./helix.js";
-      import * as components from "./app.js";
+      import * as app from "./app.js";
 
-      const root = createRoot(document.getElementById("root"), components);
-      root.render(components.Counter);
+      const root = createRoot(document.getElementById("root"), app);
+      root.render(app.Counter);
     </script>
   </head>
   <body>

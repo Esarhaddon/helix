@@ -27,6 +27,7 @@ function mergePhrases(phrases) {
   }, []);
 }
 
+// DEV: this will need to include components
 function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   return (strings, ...children) => {
     const htmlFragments = [...(strings || defaultStrings)];
@@ -320,3 +321,143 @@ console.log(JSON.stringify(template, null, 2));
 parseTemplateInPlaceV2(template);
 
 console.log(JSON.stringify(template, null, 2));
+
+const Component = (props) => {
+  // ...
+};
+
+const CTA = (props) => {
+  // ...
+};
+
+// Actually, you could go this route since you control the function return value
+function App() {
+  return html`
+    <h1>Hello world</h1>
+    ${CTA()}
+    ${Component({
+      onClick: () => {},
+      id: "my-component",
+    })`
+      <div>
+        how about something like this?
+      </div>
+      <button
+        onclick=${() => {
+          // ...
+        }}
+      >
+        submit
+      </button>
+    `}
+    <div>the end</div>
+  `;
+}
+
+// DEV: this is pretty gross though
+function App() {
+  return html`
+    ${CTA()`
+      ${CTA()`
+        ${CTA()}
+      `}
+    `}
+  `;
+}
+
+// DEV: vs HML
+// - alright, this is better than the other stuff
+
+function App() {
+  return html`
+    <h1>Hello world</h1>
+    <${CTA} />
+    <${Component} ...${props}>
+      <button
+        onClick=${() => {
+          // ...
+        }}
+      >
+        submit
+      </button>
+    <//>
+  `;
+}
+
+// DEV: but I still like this more
+// - if you allow the <//> then that saves you typing the component name once,
+//   which you can re-use at html = components(CTA, Component)
+
+// const hlx = helix(); // DEV: this should be something like getTemplate, makeTemplate, getHlx?
+
+// DEV: this is actually pretty slick since it prevents renaming the symbol from
+// breaking the lookup
+// hlx.components = { CTA, Component };
+
+// DEV: actually, if you go the export * path you can get around having to
+// export an hlx const as well by adding components to each exported fn or obj
+// that meets your criteria
+// - you can pass components to the rendering logic the same way that you do the
+//   current instance id
+// - you may need some kind of FIFO stack to track rendering comoponents
+
+const hlx = template({
+  CTA,
+  Component,
+});
+
+function App() {
+  return hlx`
+    <h1>Hello world</h1>
+    <CTA />
+    <Component ${props}>
+      <button
+        onClick=${() => {
+          // ...
+        }}
+      >
+        submit
+      </button>
+    <//>
+  `;
+}
+
+// DEV: is this better?
+// - maybe slightly
+function App() {
+  return html`
+    ${CTA({
+      children: CTA({
+        children: CTA({
+          children: CTA(),
+        }),
+      }),
+    })}
+  `;
+}
+
+// What about this?
+function App() {
+  return hlx`
+    <h1>Hello world</h1>
+    ${CTA()}
+    ${Component(
+      {
+        onClick: () => {},
+        id: "my-component",
+      },
+      hlx`
+        <div>
+          how about something like this?
+        </div>
+        <button
+          onclick=${() => {
+            // ...
+          }}
+        >
+          submit
+        </button>
+      `
+    )}
+  `;
+}
