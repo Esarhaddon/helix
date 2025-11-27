@@ -48,6 +48,7 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
 
     return {
       _isTemplateNode: true,
+      // DEV: call this arrayKey?
       assignedKey: key,
       hash: htmlFragments.join("_"),
       htmlFragments,
@@ -325,11 +326,6 @@ function renderToString(key, component, result = { html: "" }) {
   parseTemplateInPlaceV2(template);
   console.log(JSON.stringify(template, null, 2));
 
-  // DEV:
-  // - switch on fragment type and append to result.html
-  // - every time you encounter a component, call renderToString for that
-  //   component
-
   // DEV: parsedHtmlFragments should have a different name?
   template.parsedHtmlFragments.forEach((phrase, i) => {
     switch (phrase.type) {
@@ -358,12 +354,6 @@ function renderToString(key, component, result = { html: "" }) {
         const value =
           typeof templateChild === "function" ? templateChild() : templateChild;
 
-        // DEV: whoops, these aren't quite right since they'll be phrases with a
-        // templateChildIndex set
-
-        // const value =
-        // typeof phrase.value === "function" ? phrase.value() : phrase.value;
-
         if (typeof value === "number" || typeof value === "string") {
           // DEV: you need to also escape this
           result.html += value;
@@ -373,6 +363,7 @@ function renderToString(key, component, result = { html: "" }) {
           // DEV: going to need to call renderToString for each item and make
           // sure they have keys
         } else if (typeof value === "object" && value._isTemplateNode) {
+          // DEV: it's possible that this already has a qualified key
           renderToString(
             [
               currentInstanceStack.at(-1).key,
@@ -380,9 +371,7 @@ function renderToString(key, component, result = { html: "" }) {
                 number.toString(32)
               ),
             ].join(" "),
-            // DEV: might be able to better consolidate the handling of slots
-            // and components?
-            () => template.templateChildren[phrase.templateChildIndex],
+            () => value,
             result
           );
         }
