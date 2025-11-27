@@ -364,10 +364,7 @@ function renderToString(key, component, result = { html: "" }) {
         // const value =
         // typeof phrase.value === "function" ? phrase.value() : phrase.value;
 
-        if (
-          typeof phrase.value === "number" ||
-          typeof phrase.value === "string"
-        ) {
+        if (typeof value === "number" || typeof value === "string") {
           // DEV: you need to also escape this
           result.html += value;
         } else if (typeof value === undefined || typeof value === null) {
@@ -383,7 +380,28 @@ function renderToString(key, component, result = { html: "" }) {
                 number.toString(32)
               ),
             ].join(" "),
+            // DEV: might be able to better consolidate the handling of slots
+            // and components?
             () => template.templateChildren[phrase.templateChildIndex],
+            result
+          );
+        }
+        break;
+      case phraseTypes.COMPONENT:
+        // DEV: call it scope?
+        if (
+          phrase.tagName in component.components &&
+          typeof component.components[phrase.tagName] === "function"
+        ) {
+          renderToString(
+            // DEV: you need a function for this
+            [
+              currentInstanceStack.at(-1).key,
+              template.parsedHtmlFragments[i - 1].suffix.map((number) =>
+                number.toString(32)
+              ),
+            ].join(" "),
+            component.components[phrase.tagName],
             result
           );
         }
@@ -398,18 +416,29 @@ function renderToString(key, component, result = { html: "" }) {
 
 const hlx = getTemplateBuilderV2();
 
+function Button() {
+  return hlx`
+    <button onClick=${() => {}}>
+      press me
+    </button>
+  `;
+}
+
 const Component = () => {
   const nonce = Math.round(Math.random() * 1_000);
 
   return hlx`
     <div data-nonce=${nonce}>
-      hello world 
+      hello world ${42}
       ${hlx`
-        <span>this is a slot</span>
+        <span id=${"my-span"}>this is a slot</span>
       `}
+      <Button />
     </div>
   `;
 };
+
+Component.components = { Button };
 
 const result = renderToString("root", Component);
 
