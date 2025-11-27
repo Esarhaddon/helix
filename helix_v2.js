@@ -331,16 +331,14 @@ function renderToString(key, component, result = { html: "" }) {
   //   component
 
   // DEV: parsedHtmlFragments should have a different name?
-  template.parsedHtmlFragments.forEach((phrase) => {
+  template.parsedHtmlFragments.forEach((phrase, i) => {
     switch (phrase.type) {
       case phraseTypes.IDENTIFIER:
         // DEV: should be value for consistency?
         result.html += `<!-- ${[
           currentInstanceStack.at(-1).key,
-          ...phrase.suffix,
-        ]
-          .map((number) => number.toString(32))
-          .join(" ")} -->`;
+          ...phrase.suffix.map((number) => number.toString(32)),
+        ].join(" ")} -->`;
         break;
       case phraseTypes.HTML:
         result.html += phrase.value;
@@ -351,9 +349,50 @@ function renderToString(key, component, result = { html: "" }) {
           template.templateChildren[phrase.templateChildIndex]
         }"`;
         break;
+      case phraseTypes.SLOT:
+        // DEV: this is interesting
+        // - should allow for truly functional components, like in React
+
+        const templateChild =
+          template.templateChildren[phrase.templateChildIndex];
+        const value =
+          typeof templateChild === "function" ? templateChild() : templateChild;
+
+        // DEV: whoops, these aren't quite right since they'll be phrases with a
+        // templateChildIndex set
+
+        // const value =
+        // typeof phrase.value === "function" ? phrase.value() : phrase.value;
+
+        if (
+          typeof phrase.value === "number" ||
+          typeof phrase.value === "string"
+        ) {
+          // DEV: you need to also escape this
+          result.html += value;
+        } else if (typeof value === undefined || typeof value === null) {
+          break;
+        } else if (Array.isArray(value)) {
+          // DEV: going to need to call renderToString for each item and make
+          // sure they have keys
+        } else if (typeof value === "object" && value._isTemplateNode) {
+          renderToString(
+            [
+              currentInstanceStack.at(-1).key,
+              template.parsedHtmlFragments[i - 1].suffix.map((number) =>
+                number.toString(32)
+              ),
+            ].join(" "),
+            () => template.templateChildren[phrase.templateChildIndex],
+            result
+          );
+        }
+
+        break;
     }
   });
 
+  currentInstanceStack.pop();
   return result.html;
 }
 
@@ -363,13 +402,18 @@ const Component = () => {
   const nonce = Math.round(Math.random() * 1_000);
 
   return hlx`
-    <div data-nonce=${nonce}>hello world</div>
+    <div data-nonce=${nonce}>
+      hello world 
+      ${hlx`
+        <span>this is a slot</span>
+      `}
+    </div>
   `;
 };
 
 const result = renderToString("root", Component);
 
-console.log({ result });
+console.log(result);
 
 // const test = getTemplateBuilderV2();
 
