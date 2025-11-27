@@ -1,9 +1,19 @@
+const phraseTypes = {
+  IDENTIFIER: "identifier",
+  // DEV: eventually, you won't use this for event listeners
+  ATTRIBUTE: "attribute",
+  HTML: "html",
+  // DEV: not quite sure what to do with these rn
+  SLOT: "slot",
+  COMPONENT: "component",
+};
+
 function isMergeable(phrase) {
   return (
     phrase &&
-    !("identifier" in phrase) &&
-    !("templateChildIndex" in phrase) &&
-    !phrase.isComponentTag
+    phrase.type !== phraseTypes.IDENTIFIER &&
+    phrase.type !== phraseTypes.ATTRIBUTE &&
+    phrase.type !== phraseTypes.COMPONENT
   );
 }
 
@@ -78,7 +88,7 @@ function parseTemplateInPlaceV2(template) {
   template.htmlFragments.forEach((fragment, i) => {
     // Add a closing identifier for slots
     if (!isOpeningTag && !isClosingTag && i !== 0) {
-      pushPhrase({ identifier: "IDENTIFIER", suffix: getSuffix() });
+      pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
       incSuffix();
     }
 
@@ -104,7 +114,7 @@ function parseTemplateInPlaceV2(template) {
       );
 
       if (controlCharsIndex < 0 && !isComponentTag) {
-        pushPhrase({ value: unparsedFragment });
+        pushPhrase({ type: phraseTypes.HTML, value: unparsedFragment });
 
         break;
       }
@@ -119,6 +129,7 @@ function parseTemplateInPlaceV2(template) {
         case "<":
           if (controlCharsIndex !== 0) {
             pushPhrase({
+              type: phraseTypes.HTML,
               value: unparsedFragment.slice(0, controlCharsIndex),
             });
           }
@@ -127,14 +138,15 @@ function parseTemplateInPlaceV2(template) {
             isComponentTag = true;
 
             // Don't increment the suffix since this is an opening tag
-            pushPhrase({ identifier: "IDENTIFIER", suffix: getSuffix() });
+            pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
           }
 
-          pushPhrase({ tagStart: true, value: "<" });
+          pushPhrase({ type: phraseTypes.HTML, tagStart: true, value: "<" });
 
           if (isComponentTag) {
             Object.assign(prevPhrase(), {
-              isComponentTag: true,
+              isComponentTag: true, // DEV: you should be able to get rid of this on the phrase
+              type: phraseTypes.COMPONENT,
               tagName: unparsedFragment.slice(
                 controlCharsIndex + 1,
                 controlCharsIndex +
@@ -158,6 +170,7 @@ function parseTemplateInPlaceV2(template) {
         case '"':
           if (!isComponentTag) {
             pushPhrase({
+              type: phraseTypes.HTML,
               value: unparsedFragment.slice(0, controlCharsIndex + 1),
             });
           } else if (!isAttr) {
@@ -196,6 +209,7 @@ function parseTemplateInPlaceV2(template) {
 
           if (!isComponentTag) {
             pushPhrase({
+              type: phraseTypes.HTML,
               value: unparsedFragment.slice(0, controlCharsIndex + 2),
             });
           }
@@ -206,6 +220,7 @@ function parseTemplateInPlaceV2(template) {
         case ">":
           if (!isComponentTag) {
             pushPhrase({
+              type: phraseTypes.HTML,
               value: unparsedFragment.slice(0, controlCharsIndex + 1),
             });
           } else if (
@@ -224,7 +239,7 @@ function parseTemplateInPlaceV2(template) {
             isClosingTag ||
             unparsedFragment[controlCharsIndex - 1] === "/"
           ) {
-            pushPhrase({ identifier: "IDENTIFIER", suffix: getSuffix() });
+            pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
             incSuffix();
           }
 
@@ -266,21 +281,32 @@ function parseTemplateInPlaceV2(template) {
       i !== template.htmlFragments.length - 1
     ) {
       // Don't increment the suffix since this marks the beginning of the slot
-      pushPhrase({ identifier: "IDENTIFIER", suffix: getSuffix() });
-      pushPhrase({ templateChildIndex: i, type: "slot" });
+      pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
+      pushPhrase({
+        type: phraseTypes.SLOT,
+        templateChildIndex: i,
+        type: "slot",
+      });
     } else if (isOpeningTag && !isComponentTag) {
       const phrases = levelsStack.at(-1).phrases;
       const start = phrases.findLastIndex((phrase) => phrase.tagStart);
 
-      if (!phrases[start - 1] || !("identifier" in phrases[start - 1])) {
+      if (
+        !phrases[start - 1] ||
+        !(phrases[start - 1].type !== phraseTypes.IDENTIFIER)
+      ) {
         phrases.splice(start, 0, {
-          identifier: "IDENTIFIER",
+          type: phraseTypes.IDENTIFIER,
           suffix: getSuffix(),
         });
         incSuffix();
       }
 
-      pushPhrase({ templateChildIndex: i, type: "attribute" });
+      pushPhrase({
+        type: phraseTypes.ATTRIBUTE, // DEV: type should just be an arg of pushPhrase?
+        templateChildIndex: i,
+        type: "attribute",
+      });
     }
   });
 
@@ -289,53 +315,96 @@ function parseTemplateInPlaceV2(template) {
 
 let currentInstanceStack = [];
 
-function renderToString(key, component, result) {
+// DEV: someday this could be streamed?
+
+// DEV: can you treat slots just like components?
+function renderToString(key, component, result = { html: "" }) {
   currentInstanceStack.push({ key });
 
   const template = component();
   parseTemplateInPlaceV2(template);
+  console.log(JSON.stringify(template, null, 2));
 
   // DEV:
   // - switch on fragment type and append to result.html
   // - every time you encounter a component, call renderToString for that
   //   component
-  template.parsedHtmlFragments.forEach((fragment) => {});
+
+  // DEV: parsedHtmlFragments should have a different name?
+  template.parsedHtmlFragments.forEach((phrase) => {
+    switch (phrase.type) {
+      case phraseTypes.IDENTIFIER:
+        // DEV: should be value for consistency?
+        result.html += `<!-- ${[
+          currentInstanceStack.at(-1).key,
+          ...phrase.suffix,
+        ]
+          .map((number) => number.toString(32))
+          .join(" ")} -->`;
+        break;
+      case phraseTypes.HTML:
+        result.html += phrase.value;
+        break;
+      case phraseTypes.ATTRIBUTE:
+        result.html += `"${
+          // TODO: you may need to escape this
+          template.templateChildren[phrase.templateChildIndex]
+        }"`;
+        break;
+    }
+  });
+
+  return result.html;
 }
 
-const test = getTemplateBuilderV2();
+const hlx = getTemplateBuilderV2();
 
-const template = test`
-  this is just a string
-  <div id="my-div">
-    <Component ${{}} id="<_adfa>k<>" ${{}} onClick=${() => {}} />
-    hello world
-    <span spanid="my-span<<><'" id=${{}} onclick=${() => {}}></span>
-    <input oninput=${() => {}} />
-  </div>
-  <div>hello world</div>
-  <Component onClick=${() => {}} id=${null}>
-    <span>
-      hello world
-      ${{}}
-      <div>even moar nested</div>
-      <AnotherComponent
-        ${{ greeting: "hello world" }}
-        class="my-class"
-      >
-        <div onclick=${() => {}}>You still need to match tags?</div>
-        <div onclick=${() => {}}>Very cool that this is working now</div>
-      </AnotherComponent>
-      does this work?
-    </span>
-  </Component>
-  <span>last little bit</span>
-`;
+const Component = () => {
+  const nonce = Math.round(Math.random() * 1_000);
 
-console.log(JSON.stringify(template, null, 2));
+  return hlx`
+    <div data-nonce=${nonce}>hello world</div>
+  `;
+};
 
-parseTemplateInPlaceV2(template);
+const result = renderToString("root", Component);
 
-console.log(JSON.stringify(template, null, 2));
+console.log({ result });
+
+// const test = getTemplateBuilderV2();
+
+// const template = test`
+//   this is just a string
+//   <div id="my-div">
+//     <Component ${{}} id="<_adfa>k<>" ${{}} onClick=${() => {}} />
+//     hello world
+//     <span spanid="my-span<<><'" id=${{}} onclick=${() => {}}></span>
+//     <input oninput=${() => {}} />
+//   </div>
+//   <div>hello world</div>
+//   <Component onClick=${() => {}} id=${null}>
+//     <span>
+//       hello world
+//       ${{}}
+//       <div>even moar nested</div>
+//       <AnotherComponent
+//         ${{ greeting: "hello world" }}
+//         class="my-class"
+//       >
+//         <div onclick=${() => {}}>You still need to match tags?</div>
+//         <div onclick=${() => {}}>Very cool that this is working now</div>
+//       </AnotherComponent>
+//       does this work?
+//     </span>
+//   </Component>
+//   <span>last little bit</span>
+// `;
+
+// console.log(JSON.stringify(template, null, 2));
+
+// parseTemplateInPlaceV2(template);
+
+// console.log(JSON.stringify(template, null, 2));
 
 // DEV: for the index file, you should go with something like this:
 
