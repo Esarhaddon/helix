@@ -287,6 +287,21 @@ function parseTemplateInPlaceV2(template) {
   template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
 }
 
+let currentInstanceStack = [];
+
+function renderToString(key, component, result) {
+  currentInstanceStack.push({ key });
+
+  const template = component();
+  parseTemplateInPlaceV2(template);
+
+  // DEV:
+  // - switch on fragment type and append to result.html
+  // - every time you encounter a component, call renderToString for that
+  //   component
+  template.parsedHtmlFragments.forEach((fragment) => {});
+}
+
 const test = getTemplateBuilderV2();
 
 const template = test`
@@ -303,8 +318,8 @@ const template = test`
       hello world
       ${{}}
       <div>even moar nested</div>
-      <AnotherComponent 
-        ${{ greeting: "hello world" }} 
+      <AnotherComponent
+        ${{ greeting: "hello world" }}
         class="my-class"
       >
         <div onclick=${() => {}}>You still need to match tags?</div>
