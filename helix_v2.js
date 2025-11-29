@@ -37,6 +37,28 @@ function mergePhrases(phrases) {
   }, []);
 }
 
+//
+
+// DEV: this isn't quite right?
+// - what affect does this have on when html is actually parsed (when rendering
+//   or when the file first runs)?
+//   - probably matters for perf
+// - how exactly does this work again?
+function helix() {
+  return function hlx(stringsOrConfig, ...children) {
+    if (Array.isArray(stringsOrConfig)) {
+      const strings = stringsOrConfig;
+      return getTemplateBuilderV2(undefined, strings, ...children)();
+    } else if (typeof stringsOrConfig === "string") {
+      const key = stringsOrConfig;
+      return getTemplateBuilderV2(key);
+    } else {
+      const config = stringsOrConfig;
+      return getTemplateBuilderV2(config.key);
+    }
+  };
+}
+
 // DEV: this will need to include components
 function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   return (strings, ...children) => {
@@ -48,11 +70,11 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
 
     return {
       _isTemplateNode: true,
-      // DEV: call this arrayKey?
-      assignedKey: key,
+      assignedkey: key,
       hash: htmlFragments.join("_"),
       htmlFragments,
-      templateChildren: children || defaultChildren,
+      // DEV: hmm
+      templateChildren: children.length ? children : defaultChildren,
     };
   };
 }
@@ -229,7 +251,6 @@ function parseTemplateInPlaceV2(template) {
             unparsedFragment[controlCharsIndex - 1] !== "/"
           ) {
             const suffix = getSuffix();
-            console.log({ suffix });
 
             levelsStack.push({
               parent: prevPhrase(),
@@ -324,7 +345,6 @@ function renderToString(key, component, result = { html: "" }) {
 
   const template = component();
   parseTemplateInPlaceV2(template);
-  console.log(JSON.stringify(template, null, 2));
 
   // DEV: parsedHtmlFragments should have a different name?
   template.parsedHtmlFragments.forEach((phrase, i) => {
@@ -362,6 +382,32 @@ function renderToString(key, component, result = { html: "" }) {
         } else if (Array.isArray(value)) {
           // DEV: going to need to call renderToString for each item and make
           // sure they have keys
+          // - each item in the array needs to be wrapped in a key that
+          //   incorporates the assigned key
+
+          if (!value.every((item) => item._isTemplateNode)) {
+            throw new Error("code: 13sf5197a"); // DEV
+          }
+
+          if (!value.every((item) => item.assignedkey)) {
+            throw new Error("code: 3r987asls"); // DEV
+          }
+
+          value.forEach((item) => {
+            // DEV: dry this up
+            const key = [
+              currentInstanceStack.at(-1).key,
+              template.parsedHtmlFragments[i - 1].suffix.map((number) =>
+                number.toString(32)
+              ),
+              item.assignedkey,
+            ].join(" ");
+
+            result.html += `<!-- ${key} -->`;
+            // DEV: why is it necessary to return the item as fn?
+            renderToString(key, () => item, result);
+            result.html += `<!-- ${key} -->`;
+          });
         } else if (typeof value === "object" && value._isTemplateNode) {
           // DEV: it's possible that this already has a qualified key
           renderToString(
@@ -403,7 +449,18 @@ function renderToString(key, component, result = { html: "" }) {
   return result.html;
 }
 
-const hlx = getTemplateBuilderV2();
+// DEV: just call it html?
+const hlx = helix();
+
+function ArrayTest() {
+  return hlx`
+    ${new Array(3).fill(null).map((_, i) => {
+      return hlx("key-" + i)`
+        <div style=${"color: blue;"}>index: ${i}</div>
+      `;
+    })}
+  `;
+}
 
 function Button() {
   return hlx`
@@ -413,25 +470,53 @@ function Button() {
   `;
 }
 
+// DEV: sort of odd that it doesn't matter if you call this or not when you
+// interpolate it?
+function DoesThisWork() {
+  return hlx`
+    <span>this is an interpolated component</span>
+  `;
+}
+
+// DEV: hlx needs to be able to handle comments
 const Component = () => {
   const nonce = Math.round(Math.random() * 1_000);
 
+  const someUI = hlx`
+    <div style=${"border: 1px dashed black;"}>this is super cool</div>
+  `;
+
   return hlx`
     <div data-nonce=${nonce}>
-      hello world ${42}
-      ${hlx`
-        <span id=${"my-span"}>this is a slot</span>
-      `}
-      <Button />
+     hello world
     </div>
+    <Button />
+    <ArrayTest />
+    ${DoesThisWork}
+    ${someUI}
   `;
 };
 
-Component.components = { Button };
+Component.components = { ArrayTest, Button };
 
 const result = renderToString("root", Component);
 
 console.log(result);
+
+// DEV: hmm, looks like you're giving components extra keys?
+// - don't think the root node of the component needs a separate key from the
+//   component itself?
+
+// DEV: there might be a few ways to reduce dom pollution:
+// - you could omit closing keys for array items
+// - can you omit closing keys entirely?
+// - if a node only has a single parent, could you omit a closing key?
+// - ^^^ for any of these you would want to make sure it was resilient against
+//   the framework user injecting their own dom
+
+const root = document.getElementById("root");
+
+root.innerHTML = result;
 
 // const test = getTemplateBuilderV2();
 

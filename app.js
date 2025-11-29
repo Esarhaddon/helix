@@ -1,4 +1,5 @@
 import helix, { createRoot, createSignal, useSignal } from "./helix.js";
+import { ShowCount } from "./show-count.js";
 
 export * as Input from "./input.js";
 export * as GlobalSignalTest from "./global-signal-test.js";
@@ -19,26 +20,6 @@ export function ArrayTest() {
 }
 
 export const globalSignal = createSignal("");
-
-export function Counter() {
-  const count = useSignal(0);
-
-  return hlx`
-    <div>${count.value}</div>
-    <button onclick=${() => count.value++}>↑</button>
-    <button onclick=${() => count.value--}>↓</button>
-    ${
-      count.value > 5
-        ? hlx`
-            <span>count is over 5!</span>
-            <div>this is a div</div>
-            this is some text
-          `
-        : ""
-    }
-    <div>global signal value: ${globalSignal.value}</div>
-  `;
-}
 
 export function Count({ count }) {
   return hlx`<div>The count is: ${count}</div>`;
@@ -69,37 +50,25 @@ export function ThisShouldNotBreak() {
       `;
 }
 
-export function App() {
-  const test = useSignal({ the: { count: 0 } });
-  const formState = useSignal({});
+export const count = createSignal(0);
+
+export * as ShowCount from "./show-count.js";
+
+export function Counter() {
+  // const count = useSignal(0);
 
   return hlx`
-    <Count ...${{
-      count: hlx`<span>${test.value.the.count}</span>`,
-    }}
-    />
-    <div>and again: ${test.value.the.count}</div>
-    <button onclick=${() => test.value.the.count++}>inc</button>
+    <div>${count.value}</div>
+    <button onclick=${() => count.value++}>↑</button>
+    <button onclick=${() => count.value--}>↓</button>
+  `;
+}
+
+export function App() {
+  return hlx`
     <Counter />
-    <input
-      placeholder="global value"
-      value=${globalSignal.value}
-      oninput=${(e) => (globalSignal.value = e.target.value)}
-    />
-    <ThisShouldNotBreak />
-    <ChildrenTest>
-     ${Array(3)
-       .fill(null)
-       .map(
-         (_, index) => hlx(index.toString())`
-         <div>
-          <Input ...${{ formState, index }} />
-         </div>
-       `
-       )}
-    </ChildrenTest>
-    <GlobalSignalTest />
-    <p>array test:</p>
-    <ArrayTest />
+    <br />
+    show count:
+    <ShowCount />
   `;
 }
