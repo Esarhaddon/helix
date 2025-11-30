@@ -223,18 +223,21 @@ function parseTemplateInPlaceV2(template) {
         case "</":
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 2])) {
             isComponentTag = true;
+          }
 
+          pushPhrase({
+            type: phraseTypes.HTML,
+            value: unparsedFragment.slice(
+              0,
+              isComponentTag ? controlCharsIndex : controlCharsIndex + 2
+            ),
+          });
+
+          if (isComponentTag) {
             levelsStack.at(-1).parent.parsedHtmlFragments = mergePhrases(
               levelsStack.at(-1).phrases
             );
             levelsStack.pop();
-          }
-
-          if (!isComponentTag) {
-            pushPhrase({
-              type: phraseTypes.HTML,
-              value: unparsedFragment.slice(0, controlCharsIndex + 2),
-            });
           }
 
           isClosingTag = true;
@@ -346,6 +349,8 @@ function renderToString(key, component, result = { html: "" }) {
   const template = component();
   parseTemplateInPlaceV2(template);
 
+  console.log(JSON.stringify(template, null, 2));
+
   // DEV: parsedHtmlFragments should have a different name?
   template.parsedHtmlFragments.forEach((phrase, i) => {
     switch (phrase.type) {
@@ -428,6 +433,8 @@ function renderToString(key, component, result = { html: "" }) {
           phrase.tagName in component.components &&
           typeof component.components[phrase.tagName] === "function"
         ) {
+          // DEV: you need to handle props and children here
+
           renderToString(
             // DEV: you need a function for this
             [
@@ -452,6 +459,7 @@ function renderToString(key, component, result = { html: "" }) {
 // DEV: just call it html?
 const hlx = helix();
 
+// DEV: the performance is looking quite good
 function ArrayTest() {
   return hlx`
     ${new Array(3).fill(null).map((_, i) => {
@@ -486,11 +494,14 @@ const Component = () => {
     <div style=${"border: 1px dashed black;"}>this is super cool</div>
   `;
 
+  // DEV: whoops, looks like plain text children aren't handled correctly
   return hlx`
     <div data-nonce=${nonce}>
      hello world
     </div>
-    <Button />
+    <Button>
+     child text
+    </Button>
     <ArrayTest />
     ${DoesThisWork}
     ${someUI}
@@ -503,12 +514,15 @@ const result = renderToString("root", Component);
 
 console.log(result);
 
+// DEV: hash all user-provided keys?
+
 // DEV: hmm, looks like you're giving components extra keys?
 // - don't think the root node of the component needs a separate key from the
 //   component itself?
 
 // DEV: there might be a few ways to reduce dom pollution:
 // - you could omit closing keys for array items
+//   - when remounting you could just replace everything up to the next array key
 // - can you omit closing keys entirely?
 // - if a node only has a single parent, could you omit a closing key?
 // - ^^^ for any of these you would want to make sure it was resilient against
@@ -517,6 +531,8 @@ console.log(result);
 const root = document.getElementById("root");
 
 root.innerHTML = result;
+
+// DEV: next thing is probably to get children working
 
 // const test = getTemplateBuilderV2();
 
