@@ -79,7 +79,11 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   };
 }
 
+// DEV: recursion would probably be a better pattern than the stack pattern that
+// you came up with
+
 // DEV: you should hold off on parsing until you know it's time to render
+// - would probably be a performance boost for apps with lots of components
 function parseTemplateInPlaceV2(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
@@ -253,8 +257,6 @@ function parseTemplateInPlaceV2(template) {
             isOpeningTag &&
             unparsedFragment[controlCharsIndex - 1] !== "/"
           ) {
-            const suffix = getSuffix();
-
             levelsStack.push({
               parent: prevPhrase(),
               suffix: [...getSuffix(), 0],
@@ -339,6 +341,7 @@ function parseTemplateInPlaceV2(template) {
 }
 
 let currentInstanceStack = [];
+let propsByKey = {};
 
 // DEV: someday this could be streamed?
 
@@ -346,8 +349,12 @@ let currentInstanceStack = [];
 function renderToString(key, component, result = { html: "" }) {
   currentInstanceStack.push({ key });
 
-  const template = component();
-  parseTemplateInPlaceV2(template);
+  const template = component(propsByKey[key] || {});
+
+  // DEV: hmm
+  if (!template.parsedHtmlFragments) {
+    parseTemplateInPlaceV2(template);
+  }
 
   console.log(JSON.stringify(template, null, 2));
 
@@ -435,6 +442,36 @@ function renderToString(key, component, result = { html: "" }) {
         ) {
           // DEV: you need to handle props and children here
 
+          const key = [
+            currentInstanceStack.at(-1).key,
+            template.parsedHtmlFragments[i - 1].suffix.map((number) =>
+              number.toString(32)
+            ),
+          ].join(" ");
+
+          if (phrase.parsedHtmlFragments.length) {
+            // DEV: this should have a hash as well
+
+            // DEV: hmm
+            const templateChildren = [];
+            phrase.parsedHtmlFragments.forEach((fragment) => {
+              "templateChildIndex" in fragment
+                ? (templateChildren[fragment.templateChildIndex] =
+                    template.templateChildren[fragment.templateChildIndex])
+                : null;
+            });
+
+            // DEV: qualified identifiers
+            // - not sure ids are handled quite right
+            const children = {
+              _isTemplateNode: true,
+              templateChildren,
+              parsedHtmlFragments: phrase.parsedHtmlFragments,
+            };
+
+            propsByKey[key] = { ...propsByKey[key], children };
+          }
+
           renderToString(
             // DEV: you need a function for this
             [
@@ -470,10 +507,12 @@ function ArrayTest() {
   `;
 }
 
-function Button() {
+function Button({ children }) {
+  console.log("the button children:", children);
+
   return hlx`
     <button onClick=${() => {}}>
-      press me
+      ${children}
     </button>
   `;
 }
@@ -494,13 +533,12 @@ const Component = () => {
     <div style=${"border: 1px dashed black;"}>this is super cool</div>
   `;
 
-  // DEV: whoops, looks like plain text children aren't handled correctly
   return hlx`
     <div data-nonce=${nonce}>
      hello world
     </div>
     <Button>
-     child text
+      press me
     </Button>
     <ArrayTest />
     ${DoesThisWork}
