@@ -537,6 +537,9 @@ function DoesThisWork() {
   `;
 }
 
+// DEV: components can't return plain strings?
+// - at least as the app root?
+
 // DEV: hlx needs to be able to handle comments
 const Component = () => {
   const nonce = Math.round(Math.random() * 1_000);
@@ -546,16 +549,22 @@ const Component = () => {
   `;
 
   return hlx`
-    <div data-nonce=${nonce}>
-     hello world
-    </div>
     <Button>
       ${"press me"}
     </Button>
-    <ArrayTest />
-    ${DoesThisWork}
-    ${someUI}
   `;
+
+  // return hlx`
+  //   <div data-nonce=${nonce}>
+  //    hello world
+  //   </div>
+  //   <Button>
+  //     ${"press me"}
+  //   </Button>
+  //   <ArrayTest />
+  //   ${DoesThisWork}
+  //   ${someUI}
+  // `;
 };
 
 Component.components = { ArrayTest, Button };
