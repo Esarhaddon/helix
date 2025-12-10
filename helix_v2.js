@@ -79,8 +79,16 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   };
 }
 
+// DEV: there might be a few places you can collapse identifiers
+// - component children
+// - the first node in a template
+// - the trailing identifier for an array item
+// - maybe don't worry about it for now though
+
 // DEV: recursion would probably be a better pattern than the stack pattern that
 // you came up with
+// - actually maybe not since in order to know the hash of some nested html that
+//   isn't a separate template, you have to parse it anyway
 
 // DEV: you should hold off on parsing until you know it's time to render
 // - would probably be a performance boost for apps with lots of components
@@ -93,6 +101,9 @@ function parseTemplateInPlaceV2(template) {
   const result = [];
   const levelsStack = [{ suffix: [0], phrases: result }];
 
+  // DEV: seems like this logic might not be quite right
+  // - pretty sure the suffix should be shared at all levels since everything
+  //   being parsed is part of the same template string
   function getSuffix() {
     return [...levelsStack.at(-1).suffix];
   }
@@ -463,6 +474,7 @@ function renderToString(key, component, result = { html: "" }) {
 
             // DEV: qualified identifiers
             // - not sure ids are handled quite right
+            // - you also need to add the hash for diffing
             const children = {
               _isTemplateNode: true,
               templateChildren,
@@ -538,7 +550,7 @@ const Component = () => {
      hello world
     </div>
     <Button>
-      press me
+      ${"press me"}
     </Button>
     <ArrayTest />
     ${DoesThisWork}
