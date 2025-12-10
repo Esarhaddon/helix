@@ -109,12 +109,21 @@ function parseTemplateInPlaceV2(template) {
   // within nested templates
   // - suffix should just be a counter that gets incremented
   function getSuffix() {
-    return [...levelsStack.at(-1).suffix];
+    return [...levelsStack[0].suffix];
   }
 
   function incSuffix() {
-    const suffix = levelsStack.at(-1).suffix;
+    const suffix = levelsStack[0].suffix;
     suffix[suffix.length - 1]++;
+  }
+
+  function prevSuffix() {
+    return [
+      ...levelsStack
+        .at(-1)
+        .phrases.findLast((phrase) => phrase.type === phraseTypes.IDENTIFIER)
+        .suffix,
+    ];
   }
 
   function prevPhrase() {
@@ -130,8 +139,8 @@ function parseTemplateInPlaceV2(template) {
   template.htmlFragments.forEach((fragment, i) => {
     // Add a closing identifier for slots
     if (!isOpeningTag && !isClosingTag && i !== 0) {
-      pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
-      incSuffix();
+      pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: prevSuffix() });
+      // incSuffix();
     }
 
     let unparsedFragment = fragment;
@@ -181,6 +190,7 @@ function parseTemplateInPlaceV2(template) {
 
             // Don't increment the suffix since this is an opening tag
             pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
+            incSuffix();
           }
 
           pushPhrase({ type: phraseTypes.HTML, tagStart: true, value: "<" });
@@ -281,8 +291,8 @@ function parseTemplateInPlaceV2(template) {
             isClosingTag ||
             unparsedFragment[controlCharsIndex - 1] === "/"
           ) {
-            pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
-            incSuffix();
+            pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: prevSuffix() });
+            // incSuffix();
           }
 
           isClosingTag = false;
@@ -324,6 +334,7 @@ function parseTemplateInPlaceV2(template) {
     ) {
       // Don't increment the suffix since this marks the beginning of the slot
       pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
+      incSuffix();
       pushPhrase({
         type: phraseTypes.SLOT,
         templateChildIndex: i,
