@@ -451,8 +451,13 @@ function renderToString(
             ].join(" ");
 
             result.html += `<!-- ${key} -->`;
+
+            // DEV: arg
+            const fn = () => item;
+            fn.components = component.components;
+
             // DEV: why is it necessary to return the item as fn?
-            renderToString(key, () => item, result);
+            renderToString(key, fn, result);
             result.html += `<!-- ${key} -->`;
           });
         } else if (typeof value === "object" && value._isTemplateNode) {
@@ -616,17 +621,32 @@ const Component = () => {
   // DEV: looks like non-interpolated children are actually being handled
   // correctly
 
+  const evenStyle = "color: blue;";
+  const oddStyle = "color: red;";
+
   return hlx`
-    <WithChildren>
-      hello world
-      <WithChildren>
-        hello again
-      </WithChildren>
-    </WithChildren>
-    <Button>
-      <span>${"press me"}</span>
-    </Button>
+    ${new Array(5).fill(null).map((_, i) => {
+      return hlx("my-key-" + i)`
+        <div style=${(i + 1) % 2 === 0 ? evenStyle : oddStyle}>
+          hello world
+          <Button>press me</Button>
+        </div>
+      `;
+    })}
+    ${"what's up doc?"}
   `;
+
+  // return hlx`
+  //   <WithChildren>
+  //     hello world
+  //     <WithChildren>
+  //       hello again
+  //     </WithChildren>
+  //   </WithChildren>
+  //   <Button>
+  //     <span>${"press me"}</span>
+  //   </Button>
+  // `;
 
   // return hlx`
   //   <WithChildren>
