@@ -79,6 +79,8 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   };
 }
 
+const cache = {};
+
 // DEV: there might be a few places you can collapse identifiers
 // - component children
 // - the first node in a template
@@ -98,7 +100,14 @@ function parseTemplateInPlaceV2(template) {
   let isComponentTag = false;
   let isAttr = false;
 
-  const result = [];
+  const result = cache[template.hash] || [];
+  template.parsedHtmlFragments = result;
+
+  if (result.length) {
+    // console.log("cache hit!");
+    return;
+  }
+
   const levelsStack = [{ suffix: [0], phrases: result }];
 
   // DEV: seems like this logic might not be quite right
@@ -133,8 +142,6 @@ function parseTemplateInPlaceV2(template) {
   function pushPhrase(phrase) {
     levelsStack.at(-1).phrases.push(phrase);
   }
-
-  template.parsedHtmlFragments = result;
 
   template.htmlFragments.forEach((fragment, i) => {
     // Add a closing identifier for slots
@@ -364,6 +371,9 @@ function parseTemplateInPlaceV2(template) {
   });
 
   template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
+
+  // DEV: hmm, the cache doesn't seem to actually make much difference
+  cache[template.hash] = template.parsedHtmlFragments;
 }
 
 let currentInstanceStack = [];
@@ -388,7 +398,7 @@ function renderToString(
     parseTemplateInPlaceV2(template);
   }
 
-  console.log(JSON.stringify(template, null, 2));
+  // console.log(JSON.stringify(template, null, 2));
 
   // DEV: are there other spots where you might need to handle prefixes?
 
@@ -578,7 +588,7 @@ function ArrayTest() {
 }
 
 function Button({ children }) {
-  console.log("the button children:", children);
+  // console.log("the button children:", children);
 
   return hlx`
     <button onClick=${() => {}}>
@@ -624,29 +634,31 @@ const Component = () => {
   const evenStyle = "color: blue;";
   const oddStyle = "color: red;";
 
-  return hlx`
-    ${new Array(5).fill(null).map((_, i) => {
-      return hlx("my-key-" + i)`
-        <div style=${(i + 1) % 2 === 0 ? evenStyle : oddStyle}>
-          hello world
-          <Button>press me</Button>
-        </div>
-      `;
-    })}
-    ${"what's up doc?"}
-  `;
+  const theEnd = "the end";
 
   // return hlx`
-  //   <WithChildren>
-  //     hello world
-  //     <WithChildren>
-  //       hello again
-  //     </WithChildren>
-  //   </WithChildren>
-  //   <Button>
-  //     <span>${"press me"}</span>
-  //   </Button>
+  //   ${new Array(5).fill(null).map((_, i) => {
+  //     return hlx("my-key-" + i)`
+  //       <div style=${(i + 1) % 2 === 0 ? evenStyle : oddStyle}>
+  //         hello world
+  //         <Button>press me</Button>
+  //       </div>
+  //     `;
+  //   })}
+  //   ${theEnd}
   // `;
+
+  return hlx`
+    <WithChildren>
+      hello world
+      <WithChildren>
+        hello again
+      </WithChildren>
+    </WithChildren>
+    <Button>
+      <span>${"press me"}</span>
+    </Button>
+  `;
 
   // return hlx`
   //   <WithChildren>
@@ -680,7 +692,7 @@ Component.components = { ArrayTest, Button, WithChildren };
 
 const result = renderToString("root", Component);
 
-console.log(result);
+// console.log(result);
 
 // DEV: hash all user-provided keys?
 
