@@ -372,10 +372,16 @@ let propsByKey = {};
 // DEV: someday this could be streamed?
 
 // DEV: can you treat slots just like components?
-function renderToString(key, component, result = { html: "" }) {
-  currentInstanceStack.push({ key });
 
-  const template = component(propsByKey[key] || {});
+function renderToString(
+  // DEV: arg
+  renderKey,
+  component,
+  result = { html: "" }
+) {
+  currentInstanceStack.push({ key: renderKey });
+
+  const template = component(propsByKey[renderKey] || {});
 
   // DEV: hmm
   if (!template.parsedHtmlFragments) {
@@ -384,13 +390,15 @@ function renderToString(key, component, result = { html: "" }) {
 
   console.log(JSON.stringify(template, null, 2));
 
+  // DEV: are there other spots where you might need to handle prefixes?
+
   // DEV: parsedHtmlFragments should have a different name?
   template.parsedHtmlFragments.forEach((phrase, i) => {
     switch (phrase.type) {
       case phraseTypes.IDENTIFIER:
         // DEV: should be value for consistency?
         result.html += `<!-- ${[
-          currentInstanceStack.at(-1).key,
+          phrase.prefix || currentInstanceStack.at(-1).key,
           ...phrase.suffix.map((number) => number.toString(32)),
         ].join(" ")} -->`;
         break;
@@ -434,7 +442,8 @@ function renderToString(key, component, result = { html: "" }) {
           value.forEach((item) => {
             // DEV: dry this up
             const key = [
-              currentInstanceStack.at(-1).key,
+              template.parsedHtmlFragments[i - 1].prefix ||
+                currentInstanceStack.at(-1).key,
               template.parsedHtmlFragments[i - 1].suffix.map((number) =>
                 number.toString(32)
               ),
@@ -456,7 +465,8 @@ function renderToString(key, component, result = { html: "" }) {
 
           renderToString(
             [
-              currentInstanceStack.at(-1).key,
+              template.parsedHtmlFragments[i - 1].prefix ||
+                currentInstanceStack.at(-1).key,
               template.parsedHtmlFragments[i - 1].suffix.map((number) =>
                 number.toString(32)
               ),
@@ -469,9 +479,9 @@ function renderToString(key, component, result = { html: "" }) {
       case phraseTypes.COMPONENT:
         // DEV: call it scope?
 
-        console.log("tagName:", phrase.tagName);
-        console.log("components:", component.components);
-        console.log("component:", component.toString());
+        // console.log("tagName:", phrase.tagName);
+        // console.log("components:", component.components);
+        // console.log("component:", component.toString());
 
         if (
           phrase.tagName in component.components &&
@@ -480,7 +490,8 @@ function renderToString(key, component, result = { html: "" }) {
           // DEV: you need to handle props and children here
 
           const key = [
-            currentInstanceStack.at(-1).key,
+            template.parsedHtmlFragments[i - 1].prefix ||
+              currentInstanceStack.at(-1).key,
             template.parsedHtmlFragments[i - 1].suffix.map((number) =>
               number.toString(32)
             ),
@@ -501,10 +512,25 @@ function renderToString(key, component, result = { html: "" }) {
             // DEV: qualified identifiers
             // - not sure ids are handled quite right
             // - you also need to add the hash for diffing
+
+            // DEV: better pattern?
+            const prefixPhrases = (phrase) => {
+              if (phrase.type === phraseTypes.IDENTIFIER) {
+                phrase.prefix = renderKey;
+              } else if (phrase.type === phraseTypes.COMPONENT) {
+                phrase.parsedHtmlFragments =
+                  phrase.parsedHtmlFragments.map(prefixPhrases);
+              }
+
+              return phrase;
+            };
+
+            // DEV: not quite right as you need to recursively qualify these
             const children = {
               _isTemplateNode: true,
               templateChildren,
-              parsedHtmlFragments: phrase.parsedHtmlFragments,
+              parsedHtmlFragments:
+                phrase.parsedHtmlFragments.map(prefixPhrases),
             };
 
             propsByKey[key] = { ...propsByKey[key], children };
@@ -513,7 +539,8 @@ function renderToString(key, component, result = { html: "" }) {
           renderToString(
             // DEV: you need a function for this
             [
-              currentInstanceStack.at(-1).key,
+              template.parsedHtmlFragments[i - 1].prefix ||
+                currentInstanceStack.at(-1).key,
               template.parsedHtmlFragments[i - 1].suffix.map((number) =>
                 number.toString(32)
               ),
@@ -588,15 +615,33 @@ const Component = () => {
 
   // DEV: looks like non-interpolated children are actually being handled
   // correctly
+
   return hlx`
     <WithChildren>
       hello world
-      <WithChildren>hello again</WithChildren>
+      <WithChildren>
+        hello again
+      </WithChildren>
     </WithChildren>
     <Button>
-      <span>press me</span>
+      <span>${"press me"}</span>
     </Button>
   `;
+
+  // return hlx`
+  //   <WithChildren>
+  //     hello world
+  //     <WithChildren>
+  //       hello again
+  //       <WithChildren>
+  //         oh no
+  //       </WithChildren>
+  //     </WithChildren>
+  //   </WithChildren>
+  //   <Button>
+  //     <span>press me</span>
+  //   </Button>
+  // `;
 
   // return hlx`
   //   <div data-nonce=${nonce}>
