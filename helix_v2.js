@@ -104,6 +104,10 @@ function parseTemplateInPlaceV2(template) {
   // DEV: seems like this logic might not be quite right
   // - pretty sure the suffix should be shared at all levels since everything
   //   being parsed is part of the same template string
+
+  // DEV: yeah, you shouldn't be building up an array within a template, just
+  // within nested templates
+  // - suffix should just be a counter that gets incremented
   function getSuffix() {
     return [...levelsStack.at(-1).suffix];
   }
@@ -433,6 +437,12 @@ function renderToString(key, component, result = { html: "" }) {
           });
         } else if (typeof value === "object" && value._isTemplateNode) {
           // DEV: it's possible that this already has a qualified key
+
+          // DEV: oof
+          // - there's gotta be a better way
+          const fn = () => value;
+          fn.components = component.components;
+
           renderToString(
             [
               currentInstanceStack.at(-1).key,
@@ -440,13 +450,18 @@ function renderToString(key, component, result = { html: "" }) {
                 number.toString(32)
               ),
             ].join(" "),
-            () => value,
+            fn,
             result
           );
         }
         break;
       case phraseTypes.COMPONENT:
         // DEV: call it scope?
+
+        console.log("tagName:", phrase.tagName);
+        console.log("components:", component.components);
+        console.log("component:", component.toString());
+
         if (
           phrase.tagName in component.components &&
           typeof component.components[phrase.tagName] === "function"
@@ -540,6 +555,18 @@ function DoesThisWork() {
 // DEV: components can't return plain strings?
 // - at least as the app root?
 
+function WithChildren({ children }) {
+  return hlx`
+  <br />
+  children:
+  <div>
+    ${children}
+  </div>
+`;
+}
+
+WithChildren.components = { Button, WithChildren, ArrayTest };
+
 // DEV: hlx needs to be able to handle comments
 const Component = () => {
   const nonce = Math.round(Math.random() * 1_000);
@@ -548,9 +575,15 @@ const Component = () => {
     <div style=${"border: 1px dashed black;"}>this is super cool</div>
   `;
 
+  // DEV: looks like non-interpolated children are actually being handled
+  // correctly
   return hlx`
+    <WithChildren>
+      hello world
+      <WithChildren>hello again</WithChildren>
+    </WithChildren>
     <Button>
-      ${"press me"}
+      <span>press me</span>
     </Button>
   `;
 
@@ -567,7 +600,7 @@ const Component = () => {
   // `;
 };
 
-Component.components = { ArrayTest, Button };
+Component.components = { ArrayTest, Button, WithChildren };
 
 const result = renderToString("root", Component);
 
