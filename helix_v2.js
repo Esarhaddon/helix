@@ -3,7 +3,6 @@ const phraseTypes = {
   // DEV: eventually, you won't use this for event listeners
   ATTRIBUTE: "attribute",
   HTML: "html",
-  // DEV: not quite sure what to do with these rn
   SLOT: "slot",
   COMPONENT: "component",
 };
@@ -635,6 +634,11 @@ const Component = () => {
   const oddStyle = "color: red;";
 
   const theEnd = "the end";
+
+  // DEV: next thing to do is to cleanup and then handle events
+  // - you could just build a dictionary of everything with an on... attr and
+  //   then add a single listener and check each event?
+  //   - but how would that work for things like mousemove?
 
   // return hlx`
   //   ${new Array(5).fill(null).map((_, i) => {
