@@ -107,6 +107,7 @@ function parseTemplateInPlaceV2(template) {
     return;
   }
 
+  let _suffix = 0;
   const levelsStack = [{ suffix: [0], phrases: result }];
 
   // DEV: seems like this logic might not be quite right
@@ -117,21 +118,18 @@ function parseTemplateInPlaceV2(template) {
   // within nested templates
   // - suffix should just be a counter that gets incremented
   function getSuffix() {
-    return [...levelsStack[0].suffix];
+    return _suffix;
   }
 
   function incSuffix() {
-    const suffix = levelsStack[0].suffix;
-    suffix[suffix.length - 1]++;
+    _suffix++;
   }
 
   function prevSuffix() {
-    return [
-      ...levelsStack
-        .at(-1)
-        .phrases.findLast((phrase) => phrase.type === phraseTypes.IDENTIFIER)
-        .suffix,
-    ];
+    return levelsStack
+      .at(-1)
+      .phrases.findLast((phrase) => phrase.type === phraseTypes.IDENTIFIER)
+      .suffix;
   }
 
   function prevPhrase() {
@@ -290,7 +288,7 @@ function parseTemplateInPlaceV2(template) {
           ) {
             levelsStack.push({
               parent: prevPhrase(),
-              suffix: [...getSuffix(), 0],
+              // suffix: [...getSuffix(), 0],
               phrases: prevPhrase().parsedHtmlFragments,
             });
           } else if (
@@ -408,7 +406,7 @@ function renderToString(
         // DEV: should be value for consistency?
         result.html += `<!-- ${[
           phrase.prefix || currentInstanceStack.at(-1).key,
-          ...phrase.suffix.map((number) => number.toString(32)),
+          phrase.suffix.toString(32), //.map((number) => number.toString(32)),
         ].join(" ")} -->`;
         break;
       case phraseTypes.HTML:
@@ -453,9 +451,7 @@ function renderToString(
             const key = [
               template.parsedHtmlFragments[i - 1].prefix ||
                 currentInstanceStack.at(-1).key,
-              template.parsedHtmlFragments[i - 1].suffix.map((number) =>
-                number.toString(32)
-              ),
+              template.parsedHtmlFragments[i - 1].suffix.toString(32),
               item.assignedkey,
             ].join(" ");
 
@@ -481,9 +477,7 @@ function renderToString(
             [
               template.parsedHtmlFragments[i - 1].prefix ||
                 currentInstanceStack.at(-1).key,
-              template.parsedHtmlFragments[i - 1].suffix.map((number) =>
-                number.toString(32)
-              ),
+              template.parsedHtmlFragments[i - 1].suffix.toString(32),
             ].join(" "),
             fn,
             result
@@ -506,9 +500,7 @@ function renderToString(
           const key = [
             template.parsedHtmlFragments[i - 1].prefix ||
               currentInstanceStack.at(-1).key,
-            template.parsedHtmlFragments[i - 1].suffix.map((number) =>
-              number.toString(32)
-            ),
+            template.parsedHtmlFragments[i - 1].suffix.toString(32),
           ].join(" ");
 
           if (phrase.parsedHtmlFragments.length) {
@@ -555,9 +547,7 @@ function renderToString(
             [
               template.parsedHtmlFragments[i - 1].prefix ||
                 currentInstanceStack.at(-1).key,
-              template.parsedHtmlFragments[i - 1].suffix.map((number) =>
-                number.toString(32)
-              ),
+              template.parsedHtmlFragments[i - 1].suffix.toString(32),
             ].join(" "),
             component.components[phrase.tagName],
             result
