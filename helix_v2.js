@@ -461,14 +461,13 @@ function renderToString(key, component, result = { html: "" }) {
   return result.html;
 }
 
-// DEV: just call it html?
-const hlx = helix();
+const html = helix();
 
 // DEV: the performance is looking quite good
 function ArrayTest() {
-  return hlx`
+  return html`
     ${new Array(3).fill(null).map((_, i) => {
-      return hlx("key-" + i)`
+      return html("key-" + i)`
         <div style=${"color: blue;"}>index: ${i}</div>
       `;
     })}
@@ -476,32 +475,24 @@ function ArrayTest() {
 }
 
 function Button({ children }) {
-  return hlx`
-    <button onClick=${() => {}}>
-      ${children}
-    </button>
-  `;
+  return html`<button onClick=${() => {}}>${children}</button>`;
 }
 
 // DEV: sort of odd that it doesn't matter if you call this or not when you
 // interpolate it?
 function DoesThisWork() {
-  return hlx`
-    <span>this is an interpolated component</span>
-  `;
+  return html`<span>this is an interpolated component</span>`;
 }
 
 // DEV: components can't return plain strings?
 // - at least as the app root?
 
 function WithChildren({ children }) {
-  return hlx`
-  <br />
-  children:
-  <div>
-    ${children}
-  </div>
-`;
+  return html`
+    <br />
+    children:
+    <div>${children}</div>
+  `;
 }
 
 WithChildren.components = { Button, WithChildren, ArrayTest };
@@ -510,7 +501,7 @@ WithChildren.components = { Button, WithChildren, ArrayTest };
 const Component = () => {
   const nonce = Math.round(Math.random() * 1_000);
 
-  const someUI = hlx`
+  const someUI = html`
     <div style=${"border: 1px dashed black;"}>this is super cool</div>
   `;
 
@@ -527,10 +518,19 @@ const Component = () => {
   //   then add a single listener and check each event?
   //   - but how would that work for things like mousemove?
 
-  return hlx`
+  return html`
+    <style>
+      .even {
+        color: blue;
+      }
+
+      .odd {
+        color: red;
+      }
+    </style>
     ${new Array(5).fill(null).map((_, i) => {
-      return hlx("my-key-" + i)`
-        <div style=${(i + 1) % 2 === 0 ? evenStyle : oddStyle}>
+      return html("my-key-" + i)`
+        <div class=${(i + 1) % 2 === 0 ? "even" : "odd"}>
           hello world
           <Button>press me</Button>
         </div>
@@ -539,16 +539,14 @@ const Component = () => {
     ${theEnd}
   `;
 
-  return hlx`
+  return html`
     <WithChildren>
       hello world
-      <WithChildren>
-        hello again
-      </WithChildren>
+      <WithChildren>hello again</WithChildren>
     </WithChildren>
-    <Button>
+    <button>
       <span>${"press me"}</span>
-    </Button>
+    </button>
   `;
 
   // return hlx`
