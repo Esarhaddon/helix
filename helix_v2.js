@@ -1,6 +1,5 @@
 const phraseTypes = {
   IDENTIFIER: "identifier",
-  // DEV: eventually, you won't use this for event listeners
   ATTRIBUTE: "attribute",
   HTML: "html",
   SLOT: "slot",
@@ -36,13 +35,7 @@ function mergePhrases(phrases) {
   }, []);
 }
 
-//
-
-// DEV: this isn't quite right?
-// - what affect does this have on when html is actually parsed (when rendering
-//   or when the file first runs)?
-//   - probably matters for perf
-// - how exactly does this work again?
+// TODO: you don't need a separate fn for this
 function helix() {
   return function hlx(stringsOrConfig, ...children) {
     if (Array.isArray(stringsOrConfig)) {
@@ -58,7 +51,6 @@ function helix() {
   };
 }
 
-// DEV: this will need to include components
 function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   return (strings, ...children) => {
     const htmlFragments = [...(strings || defaultStrings)];
@@ -72,7 +64,6 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
       assignedkey: key,
       hash: htmlFragments.join("_"),
       htmlFragments,
-      // DEV: hmm
       templateChildren: children.length ? children : defaultChildren,
     };
   };
@@ -80,19 +71,6 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
 
 const cache = {};
 
-// DEV: there might be a few places you can collapse identifiers
-// - component children
-// - the first node in a template
-// - the trailing identifier for an array item
-// - maybe don't worry about it for now though
-
-// DEV: recursion would probably be a better pattern than the stack pattern that
-// you came up with
-// - actually maybe not since in order to know the hash of some nested html that
-//   isn't a separate template, you have to parse it anyway
-
-// DEV: you should hold off on parsing until you know it's time to render
-// - would probably be a performance boost for apps with lots of components
 function parseTemplateInPlaceV2(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
@@ -103,27 +81,11 @@ function parseTemplateInPlaceV2(template) {
   template.parsedHtmlFragments = result;
 
   if (result.length) {
-    // console.log("cache hit!");
     return;
   }
 
-  let _suffix = 0;
-  const levelsStack = [{ suffix: [0], phrases: result }];
-
-  // DEV: seems like this logic might not be quite right
-  // - pretty sure the suffix should be shared at all levels since everything
-  //   being parsed is part of the same template string
-
-  // DEV: yeah, you shouldn't be building up an array within a template, just
-  // within nested templates
-  // - suffix should just be a counter that gets incremented
-  function getSuffix() {
-    return _suffix;
-  }
-
-  function incSuffix() {
-    _suffix++;
-  }
+  let suffix = 0;
+  const levelsStack = [{ phrases: result }];
 
   function prevSuffix() {
     return levelsStack
@@ -144,7 +106,6 @@ function parseTemplateInPlaceV2(template) {
     // Add a closing identifier for slots
     if (!isOpeningTag && !isClosingTag && i !== 0) {
       pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: prevSuffix() });
-      // incSuffix();
     }
 
     let unparsedFragment = fragment;
@@ -193,8 +154,8 @@ function parseTemplateInPlaceV2(template) {
             isComponentTag = true;
 
             // Don't increment the suffix since this is an opening tag
-            pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
-            incSuffix();
+            pushPhrase({ type: phraseTypes.IDENTIFIER, suffix });
+            suffix++;
           }
 
           pushPhrase({ type: phraseTypes.HTML, tagStart: true, value: "<" });
@@ -288,7 +249,6 @@ function parseTemplateInPlaceV2(template) {
           ) {
             levelsStack.push({
               parent: prevPhrase(),
-              // suffix: [...getSuffix(), 0],
               phrases: prevPhrase().parsedHtmlFragments,
             });
           } else if (
@@ -296,7 +256,6 @@ function parseTemplateInPlaceV2(template) {
             unparsedFragment[controlCharsIndex - 1] === "/"
           ) {
             pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: prevSuffix() });
-            // incSuffix();
           }
 
           isClosingTag = false;
@@ -336,9 +295,9 @@ function parseTemplateInPlaceV2(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
-      // Don't increment the suffix since this marks the beginning of the slot
-      pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: getSuffix() });
-      incSuffix();
+      pushPhrase({ type: phraseTypes.IDENTIFIER, suffix });
+      suffix++;
+
       pushPhrase({
         type: phraseTypes.SLOT,
         templateChildIndex: i,
@@ -354,9 +313,9 @@ function parseTemplateInPlaceV2(template) {
       ) {
         phrases.splice(start, 0, {
           type: phraseTypes.IDENTIFIER,
-          suffix: getSuffix(),
+          suffix,
         });
-        incSuffix();
+        suffix++;
       }
 
       pushPhrase({
@@ -369,16 +328,11 @@ function parseTemplateInPlaceV2(template) {
 
   template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
 
-  // DEV: hmm, the cache doesn't seem to actually make much difference
   cache[template.hash] = template.parsedHtmlFragments;
 }
 
 let currentInstanceStack = [];
 let propsByKey = {};
-
-// DEV: someday this could be streamed?
-
-// DEV: can you treat slots just like components?
 
 function renderToString(
   // DEV: arg
@@ -389,24 +343,16 @@ function renderToString(
   currentInstanceStack.push({ key: renderKey });
 
   const template = component(propsByKey[renderKey] || {});
-
-  // DEV: hmm
   if (!template.parsedHtmlFragments) {
     parseTemplateInPlaceV2(template);
   }
 
-  // console.log(JSON.stringify(template, null, 2));
-
-  // DEV: are there other spots where you might need to handle prefixes?
-
-  // DEV: parsedHtmlFragments should have a different name?
   template.parsedHtmlFragments.forEach((phrase, i) => {
     switch (phrase.type) {
       case phraseTypes.IDENTIFIER:
-        // DEV: should be value for consistency?
         result.html += `<!-- ${[
           phrase.prefix || currentInstanceStack.at(-1).key,
-          phrase.suffix.toString(32), //.map((number) => number.toString(32)),
+          phrase.suffix.toString(32),
         ].join(" ")} -->`;
         break;
       case phraseTypes.HTML:
@@ -419,31 +365,27 @@ function renderToString(
         }"`;
         break;
       case phraseTypes.SLOT:
-        // DEV: this is interesting
-        // - should allow for truly functional components, like in React
-
         const templateChild =
           template.templateChildren[phrase.templateChildIndex];
         const value =
           typeof templateChild === "function" ? templateChild() : templateChild;
 
         if (typeof value === "number" || typeof value === "string") {
-          // DEV: you need to also escape this
+          // TODO: you also need to escape this
           result.html += value;
         } else if (typeof value === undefined || typeof value === null) {
           break;
         } else if (Array.isArray(value)) {
-          // DEV: going to need to call renderToString for each item and make
-          // sure they have keys
-          // - each item in the array needs to be wrapped in a key that
-          //   incorporates the assigned key
-
           if (!value.every((item) => item._isTemplateNode)) {
-            throw new Error("code: 13sf5197a"); // DEV
+            throw new Error(
+              "Each element in an array must be wrapped in html(key)`...`"
+            );
           }
 
           if (!value.every((item) => item.assignedkey)) {
-            throw new Error("code: 3r987asls"); // DEV
+            throw new Error(
+              "Each element in an array must have a key. Pass one like this: html(key)`...`"
+            );
           }
 
           value.forEach((item) => {
@@ -466,12 +408,10 @@ function renderToString(
             result.html += `<!-- ${key} -->`;
           });
         } else if (typeof value === "object" && value._isTemplateNode) {
-          // DEV: it's possible that this already has a qualified key
-
           // DEV: oof
           // - there's gotta be a better way
           const fn = () => value;
-          fn.components = component.components;
+          fn.components = component.components; // DEV: you can use current instance stack for this
 
           renderToString(
             [
@@ -485,18 +425,13 @@ function renderToString(
         }
         break;
       case phraseTypes.COMPONENT:
-        // DEV: call it scope?
-
-        // console.log("tagName:", phrase.tagName);
-        // console.log("components:", component.components);
-        // console.log("component:", component.toString());
-
         if (
           phrase.tagName in component.components &&
           typeof component.components[phrase.tagName] === "function"
         ) {
           // DEV: you need to handle props and children here
 
+          // DEV: dry this up
           const key = [
             template.parsedHtmlFragments[i - 1].prefix ||
               currentInstanceStack.at(-1).key,
@@ -504,9 +439,6 @@ function renderToString(
           ].join(" ");
 
           if (phrase.parsedHtmlFragments.length) {
-            // DEV: this should have a hash as well
-
-            // DEV: hmm
             const templateChildren = [];
             phrase.parsedHtmlFragments.forEach((fragment) => {
               "templateChildIndex" in fragment
@@ -515,11 +447,6 @@ function renderToString(
                 : null;
             });
 
-            // DEV: qualified identifiers
-            // - not sure ids are handled quite right
-            // - you also need to add the hash for diffing
-
-            // DEV: better pattern?
             const prefixPhrases = (phrase) => {
               if (phrase.type === phraseTypes.IDENTIFIER) {
                 phrase.prefix = renderKey;
@@ -531,7 +458,6 @@ function renderToString(
               return phrase;
             };
 
-            // DEV: not quite right as you need to recursively qualify these
             const children = {
               _isTemplateNode: true,
               templateChildren,
@@ -630,29 +556,29 @@ const Component = () => {
   //   then add a single listener and check each event?
   //   - but how would that work for things like mousemove?
 
-  // return hlx`
-  //   ${new Array(5).fill(null).map((_, i) => {
-  //     return hlx("my-key-" + i)`
-  //       <div style=${(i + 1) % 2 === 0 ? evenStyle : oddStyle}>
-  //         hello world
-  //         <Button>press me</Button>
-  //       </div>
-  //     `;
-  //   })}
-  //   ${theEnd}
-  // `;
-
   return hlx`
-    <WithChildren>
-      hello world
-      <WithChildren>
-        hello again
-      </WithChildren>
-    </WithChildren>
-    <Button>
-      <span>${"press me"}</span>
-    </Button>
+    ${new Array(5).fill(null).map((_, i) => {
+      return hlx("my-key-" + i)`
+        <div style=${(i + 1) % 2 === 0 ? evenStyle : oddStyle}>
+          hello world
+          <Button>press me</Button>
+        </div>
+      `;
+    })}
+    ${theEnd}
   `;
+
+  // return hlx`
+  //   <WithChildren>
+  //     hello world
+  //     <WithChildren>
+  //       hello again
+  //     </WithChildren>
+  //   </WithChildren>
+  //   <Button>
+  //     <span>${"press me"}</span>
+  //   </Button>
+  // `;
 
   // return hlx`
   //   <WithChildren>
