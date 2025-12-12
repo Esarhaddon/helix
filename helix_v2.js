@@ -152,8 +152,6 @@ function parseTemplateInPlaceV2(template) {
 
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
             isComponentTag = true;
-
-            // Don't increment the suffix since this is an opening tag
             pushPhrase({ type: phraseTypes.IDENTIFIER, suffix });
             suffix++;
           }
@@ -319,7 +317,7 @@ function parseTemplateInPlaceV2(template) {
       }
 
       pushPhrase({
-        type: phraseTypes.ATTRIBUTE, // DEV: type should just be an arg of pushPhrase?
+        type: phraseTypes.ATTRIBUTE,
         templateChildIndex: i,
         type: "attribute",
       });
@@ -327,27 +325,28 @@ function parseTemplateInPlaceV2(template) {
   });
 
   template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
-
   cache[template.hash] = template.parsedHtmlFragments;
 }
 
 let currentInstanceStack = [];
 let propsByKey = {};
 
-function renderToString(
-  // DEV: arg
-  renderKey,
-  component,
-  result = { html: "" }
-) {
-  currentInstanceStack.push({ key: renderKey });
+function renderToString(key, component, result = { html: "" }) {
+  currentInstanceStack.push({ key });
 
-  const template = component(propsByKey[renderKey] || {});
+  const template = component(propsByKey[key] || {});
   if (!template.parsedHtmlFragments) {
     parseTemplateInPlaceV2(template);
   }
 
   template.parsedHtmlFragments.forEach((phrase, i) => {
+    const childKey =
+      template.parsedHtmlFragments[i - 1]?.type === phraseTypes.IDENTIFIER &&
+      `${
+        template.parsedHtmlFragments[i - 1].prefix ||
+        currentInstanceStack.at(-1).key
+      } ${template.parsedHtmlFragments[i - 1].suffix.toString(32)}`;
+
     switch (phrase.type) {
       case phraseTypes.IDENTIFIER:
         result.html += `<!-- ${[
@@ -389,23 +388,17 @@ function renderToString(
           }
 
           value.forEach((item) => {
-            // DEV: dry this up
-            const key = [
-              template.parsedHtmlFragments[i - 1].prefix ||
-                currentInstanceStack.at(-1).key,
-              template.parsedHtmlFragments[i - 1].suffix.toString(32),
-              item.assignedkey,
-            ].join(" ");
+            const itemKey = childKey + " " + item.assignedkey;
 
-            result.html += `<!-- ${key} -->`;
+            result.html += `<!-- ${itemKey} -->`;
 
             // DEV: arg
             const fn = () => item;
             fn.components = component.components;
 
             // DEV: why is it necessary to return the item as fn?
-            renderToString(key, fn, result);
-            result.html += `<!-- ${key} -->`;
+            renderToString(itemKey, fn, result);
+            result.html += `<!-- ${itemKey} -->`;
           });
         } else if (typeof value === "object" && value._isTemplateNode) {
           // DEV: oof
@@ -413,15 +406,7 @@ function renderToString(
           const fn = () => value;
           fn.components = component.components; // DEV: you can use current instance stack for this
 
-          renderToString(
-            [
-              template.parsedHtmlFragments[i - 1].prefix ||
-                currentInstanceStack.at(-1).key,
-              template.parsedHtmlFragments[i - 1].suffix.toString(32),
-            ].join(" "),
-            fn,
-            result
-          );
+          renderToString(childKey, fn, result);
         }
         break;
       case phraseTypes.COMPONENT:
@@ -430,13 +415,6 @@ function renderToString(
           typeof component.components[phrase.tagName] === "function"
         ) {
           // DEV: you need to handle props and children here
-
-          // DEV: dry this up
-          const key = [
-            template.parsedHtmlFragments[i - 1].prefix ||
-              currentInstanceStack.at(-1).key,
-            template.parsedHtmlFragments[i - 1].suffix.toString(32),
-          ].join(" ");
 
           if (phrase.parsedHtmlFragments.length) {
             const templateChildren = [];
@@ -449,7 +427,7 @@ function renderToString(
 
             const prefixPhrases = (phrase) => {
               if (phrase.type === phraseTypes.IDENTIFIER) {
-                phrase.prefix = renderKey;
+                phrase.prefix = key;
               } else if (phrase.type === phraseTypes.COMPONENT) {
                 phrase.parsedHtmlFragments =
                   phrase.parsedHtmlFragments.map(prefixPhrases);
@@ -465,16 +443,11 @@ function renderToString(
                 phrase.parsedHtmlFragments.map(prefixPhrases),
             };
 
-            propsByKey[key] = { ...propsByKey[key], children };
+            propsByKey[childKey] = { ...propsByKey[childKey], children };
           }
 
           renderToString(
-            // DEV: you need a function for this
-            [
-              template.parsedHtmlFragments[i - 1].prefix ||
-                currentInstanceStack.at(-1).key,
-              template.parsedHtmlFragments[i - 1].suffix.toString(32),
-            ].join(" "),
+            childKey,
             component.components[phrase.tagName],
             result
           );
@@ -503,8 +476,6 @@ function ArrayTest() {
 }
 
 function Button({ children }) {
-  // console.log("the button children:", children);
-
   return hlx`
     <button onClick=${() => {}}>
       ${children}
@@ -568,17 +539,17 @@ const Component = () => {
     ${theEnd}
   `;
 
-  // return hlx`
-  //   <WithChildren>
-  //     hello world
-  //     <WithChildren>
-  //       hello again
-  //     </WithChildren>
-  //   </WithChildren>
-  //   <Button>
-  //     <span>${"press me"}</span>
-  //   </Button>
-  // `;
+  return hlx`
+    <WithChildren>
+      hello world
+      <WithChildren>
+        hello again
+      </WithChildren>
+    </WithChildren>
+    <Button>
+      <span>${"press me"}</span>
+    </Button>
+  `;
 
   // return hlx`
   //   <WithChildren>
