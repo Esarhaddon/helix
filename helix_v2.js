@@ -394,6 +394,16 @@ function renderToString(key, component, result = { html: "" }) {
 
             // DEV: arg
             const fn = () => item;
+
+            // DEV: maybe only push this onto the stack if it's the very first
+            // one?
+            // - not quite sure what the correct behavior here is
+            // - pretty sure the way to think about it is anything that's not a
+            //   component is going to need components passed in
+            // - rather, anything that doesn't have components defined on it
+            //   - could be a template or function defined in the body of a
+            //     component
+            // - when you add prefixes is when you should pass in components?
             fn.components = component.components;
 
             // DEV: why is it necessary to return the item as fn?
@@ -600,111 +610,3 @@ const result = renderToString("root", Component);
 const root = document.getElementById("root");
 
 root.innerHTML = result;
-
-// DEV: next thing is probably to get children working
-
-// const test = getTemplateBuilderV2();
-
-// const template = test`
-//   this is just a string
-//   <div id="my-div">
-//     <Component ${{}} id="<_adfa>k<>" ${{}} onClick=${() => {}} />
-//     hello world
-//     <span spanid="my-span<<><'" id=${{}} onclick=${() => {}}></span>
-//     <input oninput=${() => {}} />
-//   </div>
-//   <div>hello world</div>
-//   <Component onClick=${() => {}} id=${null}>
-//     <span>
-//       hello world
-//       ${{}}
-//       <div>even moar nested</div>
-//       <AnotherComponent
-//         ${{ greeting: "hello world" }}
-//         class="my-class"
-//       >
-//         <div onclick=${() => {}}>You still need to match tags?</div>
-//         <div onclick=${() => {}}>Very cool that this is working now</div>
-//       </AnotherComponent>
-//       does this work?
-//     </span>
-//   </Component>
-//   <span>last little bit</span>
-// `;
-
-// console.log(JSON.stringify(template, null, 2));
-
-// parseTemplateInPlaceV2(template);
-
-// console.log(JSON.stringify(template, null, 2));
-
-// DEV: for the index file, you should go with something like this:
-
-/*
-
-import * as components from "./app.js"
-
-const root = createRoot.document.getElementById("root")
-
-root.register(components)
-root.render(components.App)
- 
- */
-
-// DEV: if you go the export * path you can get around having to export an hlx
-// const as well by adding components to each exported fn or obj that meets your
-// criteria
-// - you can pass components to the rendering logic the same way that you do the
-//   current instance id
-// - you may need some kind of FIFO stack to track rendering comoponents
-
-// DEV: if a js fn can tell know what file it's defined in then you might also
-// be able to combine this with some kind of global registry fn
-// - that's import.meta:
-//   https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import.meta
-// - actually wouldn't work?
-// - or you'd have to do something like this:
-//   - but then what about conflicts? you'd end up using components from other
-//     modules whether you wanted to or not
-
-/*
-
-const hlx = getHlx(import.meta.url)
-
-export Counter = hlx.c(() => {
-  // ...  
-})
-
-*/
-
-// DEV: another alternative would be to adopt an explicit import syntax like
-// this:
-
-/*
-
-hlx.import({ 
-  Counter: import("@components/counter.js")
-})
-
-// or maybe:
-
-hlx.import("Counter", "@components/counter.js")
-
-// I think this would still require something like the following in counter.js
-// though:
-
-const hlx = makeTemplate()
-
-export const Counter = hlx.c(() => {
-  // ...
-})
-
-export const Button = hlx.c(() => {
-  // ...
-})
-
-// ^^^ would the name property get added? how ubiquitious is browser support
-// for that?
-// - looks like not
-
-*/
