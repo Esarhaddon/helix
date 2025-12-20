@@ -528,25 +528,36 @@ const Component = () => {
   //   then add a single listener and check each event?
   //   - but how would that work for things like mousemove?
 
+  // DEV: seems like this might be the way to go
   return html`
-    <style>
-      .even {
-        color: blue;
-      }
+    <div>
+      <style>
+        @scope {
+          & {
+            color: green;
+            border: 1px dashed red;
+          }
 
-      .odd {
-        color: red;
-      }
-    </style>
-    ${new Array(5).fill(null).map((_, i) => {
-      return html("my-key-" + i)`
+          .even {
+            color: blue;
+          }
+
+          .odd {
+            color: red;
+          }
+        }
+      </style>
+      ${new Array(5).fill(null).map((_, i) => {
+        return html("my-key-" + i)`
         <div class=${(i + 1) % 2 === 0 ? "even" : "odd"}>
           hello world
-          <Button>press me</Button>
+          <button>press me</button>
         </div>
       `;
-    })}
-    ${theEnd}
+      })}
+      hello world
+    </div>
+    <div class="odd">${theEnd}</div>
   `;
 
   return html`
@@ -610,3 +621,103 @@ const result = renderToString("root", Component);
 const root = document.getElementById("root");
 
 root.innerHTML = result;
+
+/*
+
+export const styles = ({ type = "primary", size = "medium" }) => css`
+  padding: ${padding[size]}px;
+  background-color: ${colors.surface[type]};
+  color: ${colors.text[type]};
+`
+
+export const styles = css`
+  padding: 8px 12px;
+  color: white;
+  backgroud-color: red;
+`
+
+export const styles = css`
+  .bttn-danger {
+    padding: 8px 12px;
+    color: white;
+    backgroud-color: red;
+  }
+`
+
+*/
+
+// DEV: what about something like this that relied on the @scope property under
+// the hood
+
+/*
+
+const stylesheet = ({ backgroundColor }) => css`
+  color: white;
+  background-color: ${backgroundColor};
+`
+
+function Button({ type }) {
+  const backgroundColor = type === "danger" ? "red" : "blue";
+
+  return html`
+    <button style=${stylesheet({backgroundColor})}>press me</button>
+  `
+}
+
+*/
+
+const css = () => () => {};
+
+// DEV: this might be the api to try for css
+// - you could use scoped css
+// - would still allow some compression
+// - the api isn't mutch different then just using a style tag with @scope
+//   though
+
+const stylesheet = ({ backgroundColor }) => css`
+  color: white;
+  background-color: ${backgroundColor};
+`;
+
+function StyledButton({ type }) {
+  const backgroundColor = type === "danger" ? "red" : "blue";
+
+  return html`
+    <button
+      ${stylesheet({
+        backgroundColor,
+        color: "white",
+        size: "medium",
+        padding: "yuge",
+      })}
+    >
+      press me
+    </button>
+  `;
+}
+
+// DEV: I don't really like either of these
+
+const bttnStyles = ({ color, backgroundColor }) => html`
+  <style>
+    @scoped {
+      & {
+        color: ${color};
+        background-color: ${backgroundColor};
+      }
+    }
+  </style>
+`;
+
+function DangerButton() {
+  return html`
+    <button>
+      ${bttnStyles({
+        color: "white",
+        backgroundColor: "red",
+        size: "gigantic",
+      })}
+      Danger!
+    </button>
+  `;
+}
