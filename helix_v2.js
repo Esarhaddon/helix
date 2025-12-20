@@ -331,10 +331,10 @@ function parseTemplateInPlaceV2(template) {
 let currentInstanceStack = [];
 let propsByKey = {};
 
-function renderToString(key, component, result = { html: "" }) {
+function renderToString(key, node, result = { html: "" }) {
   currentInstanceStack.push({ key });
 
-  const template = component(propsByKey[key] || {});
+  const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
   if (!template.parsedHtmlFragments) {
     parseTemplateInPlaceV2(template);
   }
@@ -389,43 +389,19 @@ function renderToString(key, component, result = { html: "" }) {
 
           value.forEach((item) => {
             const itemKey = childKey + " " + item.assignedkey;
-
             result.html += `<!-- ${itemKey} -->`;
-
-            // DEV: arg
-            const fn = () => item;
-
-            // DEV: maybe only push this onto the stack if it's the very first
-            // one?
-            // - not quite sure what the correct behavior here is
-            // - pretty sure the way to think about it is anything that's not a
-            //   component is going to need components passed in
-            // - rather, anything that doesn't have components defined on it
-            //   - could be a template or function defined in the body of a
-            //     component
-            // - when you add prefixes is when you should pass in components?
-            fn.components = component.components;
-
-            // DEV: why is it necessary to return the item as fn?
-            renderToString(itemKey, fn, result);
+            renderToString(itemKey, item, result);
             result.html += `<!-- ${itemKey} -->`;
           });
         } else if (typeof value === "object" && value._isTemplateNode) {
-          // DEV: oof
-          // - there's gotta be a better way
-          const fn = () => value;
-          fn.components = component.components; // DEV: you can use current instance stack for this
-
-          renderToString(childKey, fn, result);
+          renderToString(childKey, value, result);
         }
         break;
       case phraseTypes.COMPONENT:
         if (
-          phrase.tagName in component.components &&
-          typeof component.components[phrase.tagName] === "function"
+          phrase.tagName in node.components &&
+          typeof node.components[phrase.tagName] === "function"
         ) {
-          // DEV: you need to handle props and children here
-
           if (phrase.parsedHtmlFragments.length) {
             const templateChildren = [];
             phrase.parsedHtmlFragments.forEach((fragment) => {
@@ -448,6 +424,7 @@ function renderToString(key, component, result = { html: "" }) {
 
             const children = {
               _isTemplateNode: true,
+              components: node.components,
               templateChildren,
               parsedHtmlFragments:
                 phrase.parsedHtmlFragments.map(prefixPhrases),
@@ -456,11 +433,7 @@ function renderToString(key, component, result = { html: "" }) {
             propsByKey[childKey] = { ...propsByKey[childKey], children };
           }
 
-          renderToString(
-            childKey,
-            component.components[phrase.tagName],
-            result
-          );
+          renderToString(childKey, node.components[phrase.tagName], result);
         }
 
         break;
@@ -529,61 +502,61 @@ const Component = () => {
   //   - but how would that work for things like mousemove?
 
   // DEV: seems like this might be the way to go
-  return html`
-    <div>
-      <style>
-        @scope {
-          & {
-            color: green;
-            border: 1px dashed red;
-          }
+  // return html`
+  //   <div>
+  //     <style>
+  //       @scope {
+  //         & {
+  //           color: green;
+  //           border: 1px dashed red;
+  //         }
 
-          .even {
-            color: blue;
-          }
+  //         .even {
+  //           color: blue;
+  //         }
 
-          .odd {
-            color: red;
-          }
-        }
-      </style>
-      ${new Array(5).fill(null).map((_, i) => {
-        return html("my-key-" + i)`
-        <div class=${(i + 1) % 2 === 0 ? "even" : "odd"}>
-          hello world
-          <button>press me</button>
-        </div>
-      `;
-      })}
-      hello world
-    </div>
-    <div class="odd">${theEnd}</div>
-  `;
+  //         .odd {
+  //           color: red;
+  //         }
+  //       }
+  //     </style>
+  //     ${new Array(5).fill(null).map((_, i) => {
+  //       return html("my-key-" + i)`
+  //       <div class=${(i + 1) % 2 === 0 ? "even" : "odd"}>
+  //         hello world
+  //         <button>press me</button>
+  //       </div>
+  //     `;
+  //     })}
+  //     hello world
+  //   </div>
+  //   <div class="odd">${theEnd}</div>
+  // `;
 
+  // return html`
+  //   <WithChildren>
+  //     hello world
+  //     <WithChildren>hello again</WithChildren>
+  //   </WithChildren>
+  //   <button>
+  //     <span>${"press me"}</span>
+  //   </button>
+  // `;
+
+  // DEV: still not quite right, something should have 0 0 1 as the identifier
+  // - is there somewhere the suffix needs to be reset?
   return html`
     <WithChildren>
       hello world
-      <WithChildren>hello again</WithChildren>
+      <WithChildren>
+        hello again
+        <WithChildren> oh no </WithChildren>
+      </WithChildren>
     </WithChildren>
     <button>
-      <span>${"press me"}</span>
+      <span>press me</span>
     </button>
   `;
-
-  // return hlx`
-  //   <WithChildren>
-  //     hello world
-  //     <WithChildren>
-  //       hello again
-  //       <WithChildren>
-  //         oh no
-  //       </WithChildren>
-  //     </WithChildren>
-  //   </WithChildren>
-  //   <Button>
-  //     <span>press me</span>
-  //   </Button>
-  // `;
 
   // return hlx`
   //   <div data-nonce=${nonce}>
@@ -621,103 +594,3 @@ const result = renderToString("root", Component);
 const root = document.getElementById("root");
 
 root.innerHTML = result;
-
-/*
-
-export const styles = ({ type = "primary", size = "medium" }) => css`
-  padding: ${padding[size]}px;
-  background-color: ${colors.surface[type]};
-  color: ${colors.text[type]};
-`
-
-export const styles = css`
-  padding: 8px 12px;
-  color: white;
-  backgroud-color: red;
-`
-
-export const styles = css`
-  .bttn-danger {
-    padding: 8px 12px;
-    color: white;
-    backgroud-color: red;
-  }
-`
-
-*/
-
-// DEV: what about something like this that relied on the @scope property under
-// the hood
-
-/*
-
-const stylesheet = ({ backgroundColor }) => css`
-  color: white;
-  background-color: ${backgroundColor};
-`
-
-function Button({ type }) {
-  const backgroundColor = type === "danger" ? "red" : "blue";
-
-  return html`
-    <button style=${stylesheet({backgroundColor})}>press me</button>
-  `
-}
-
-*/
-
-const css = () => () => {};
-
-// DEV: this might be the api to try for css
-// - you could use scoped css
-// - would still allow some compression
-// - the api isn't mutch different then just using a style tag with @scope
-//   though
-
-const stylesheet = ({ backgroundColor }) => css`
-  color: white;
-  background-color: ${backgroundColor};
-`;
-
-function StyledButton({ type }) {
-  const backgroundColor = type === "danger" ? "red" : "blue";
-
-  return html`
-    <button
-      ${stylesheet({
-        backgroundColor,
-        color: "white",
-        size: "medium",
-        padding: "yuge",
-      })}
-    >
-      press me
-    </button>
-  `;
-}
-
-// DEV: I don't really like either of these
-
-const bttnStyles = ({ color, backgroundColor }) => html`
-  <style>
-    @scoped {
-      & {
-        color: ${color};
-        background-color: ${backgroundColor};
-      }
-    }
-  </style>
-`;
-
-function DangerButton() {
-  return html`
-    <button>
-      ${bttnStyles({
-        color: "white",
-        backgroundColor: "red",
-        size: "gigantic",
-      })}
-      Danger!
-    </button>
-  `;
-}
