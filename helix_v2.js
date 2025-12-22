@@ -413,7 +413,7 @@ function renderToString(key, node, result = { html: "" }) {
 
             const prefixPhrases = (phrase) => {
               if (phrase.type === phraseTypes.IDENTIFIER) {
-                phrase.prefix = key;
+                phrase.prefix = phrase.prefix || key;
               } else if (phrase.type === phraseTypes.COMPONENT) {
                 phrase.parsedHtmlFragments =
                   phrase.parsedHtmlFragments.map(prefixPhrases);
@@ -429,6 +429,8 @@ function renderToString(key, node, result = { html: "" }) {
               parsedHtmlFragments:
                 phrase.parsedHtmlFragments.map(prefixPhrases),
             };
+
+            console.log(JSON.stringify(children, null, 2));
 
             propsByKey[childKey] = { ...propsByKey[childKey], children };
           }
@@ -496,41 +498,18 @@ const Component = () => {
 
   const theEnd = "the end";
 
-  // DEV: next thing to do is to cleanup and then handle events
-  // - you could just build a dictionary of everything with an on... attr and
-  //   then add a single listener and check each event?
-  //   - but how would that work for things like mousemove?
-
   // DEV: seems like this might be the way to go
   // return html`
   //   <div>
-  //     <style>
-  //       @scope {
-  //         & {
-  //           color: green;
-  //           border: 1px dashed red;
-  //         }
-
-  //         .even {
-  //           color: blue;
-  //         }
-
-  //         .odd {
-  //           color: red;
-  //         }
-  //       }
-  //     </style>
-  //     ${new Array(5).fill(null).map((_, i) => {
+  //     ${new Array(3).fill(null).map((_, i) => {
   //       return html("my-key-" + i)`
-  //       <div class=${(i + 1) % 2 === 0 ? "even" : "odd"}>
+  //       <div>
   //         hello world
   //         <button>press me</button>
   //       </div>
   //     `;
   //     })}
-  //     hello world
   //   </div>
-  //   <div class="odd">${theEnd}</div>
   // `;
 
   // return html`
@@ -543,14 +522,12 @@ const Component = () => {
   //   </button>
   // `;
 
-  // DEV: still not quite right, something should have 0 0 1 as the identifier
-  // - is there somewhere the suffix needs to be reset?
   return html`
+    hi there
     <WithChildren>
-      hello world
       <WithChildren>
         hello again
-        <WithChildren> oh no </WithChildren>
+        <WithChildren>oh no</WithChildren>
       </WithChildren>
     </WithChildren>
     <button>
