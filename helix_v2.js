@@ -35,20 +35,17 @@ function mergePhrases(phrases) {
   }, []);
 }
 
-// TODO: you don't need a separate fn for this
-function helix() {
-  return function hlx(stringsOrConfig, ...children) {
-    if (Array.isArray(stringsOrConfig)) {
-      const strings = stringsOrConfig;
-      return getTemplateBuilderV2(undefined, strings, ...children)();
-    } else if (typeof stringsOrConfig === "string") {
-      const key = stringsOrConfig;
-      return getTemplateBuilderV2(key);
-    } else {
-      const config = stringsOrConfig;
-      return getTemplateBuilderV2(config.key);
-    }
-  };
+function html(stringsOrConfig, ...children) {
+  if (Array.isArray(stringsOrConfig)) {
+    const strings = stringsOrConfig;
+    return getTemplateBuilderV2(undefined, strings, ...children)();
+  } else if (typeof stringsOrConfig === "string") {
+    const key = stringsOrConfig;
+    return getTemplateBuilderV2(key);
+  } else {
+    const config = stringsOrConfig;
+    return getTemplateBuilderV2(config.key);
+  }
 }
 
 function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
@@ -430,8 +427,6 @@ function renderToString(key, node, result = { html: "" }) {
                 phrase.parsedHtmlFragments.map(prefixPhrases),
             };
 
-            console.log(JSON.stringify(children, null, 2));
-
             propsByKey[childKey] = { ...propsByKey[childKey], children };
           }
 
@@ -445,8 +440,6 @@ function renderToString(key, node, result = { html: "" }) {
   currentInstanceStack.pop();
   return result.html;
 }
-
-const html = helix();
 
 // DEV: the performance is looking quite good
 function ArrayTest() {
@@ -525,9 +518,10 @@ const Component = () => {
   return html`
     hi there
     <WithChildren>
+      hello world
       <WithChildren>
         hello again
-        <WithChildren>oh no</WithChildren>
+        <WithChildren> oh no </WithChildren>
       </WithChildren>
     </WithChildren>
     <button>
