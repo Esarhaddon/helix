@@ -521,7 +521,7 @@ const Component = () => {
       hello world
       <WithChildren>
         hello again
-        <WithChildren> oh no </WithChildren>
+        <WithChildren>it's working!</WithChildren>
       </WithChildren>
     </WithChildren>
     <button>
