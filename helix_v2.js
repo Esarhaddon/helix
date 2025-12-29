@@ -105,6 +105,11 @@ function parseTemplateInPlaceV2(template) {
       pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: prevSuffix() });
     }
 
+    // DEV: spaces in opening tags followed by a charater other than ">" or " "
+    // should also be control characters since they represent attribute
+    // definitions
+    // - can you handle attribute definitions for components the same way?
+    // - attributes that aren't interpolated can be left alone
     let unparsedFragment = fragment;
     while (unparsedFragment.length) {
       let controlCharsIndex = unparsedFragment.split("").findIndex(
@@ -123,7 +128,17 @@ function parseTemplateInPlaceV2(template) {
             char === "<" &&
             unparsedFragment[i + 1] === "/") ||
           // Tag end
-          (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")
+          (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")(
+            // DEV
+            // - you used a different technique for interpolated component attrs
+            isOpeningTag &&
+              !isAttr &&
+              // DEV: don't worry about handling boolean shorthand attributes for
+              // now
+              char === " " &&
+              unparsedFragment.endsWith("=") &&
+              !unparsedFragment.slice(i).includes(" ")
+          )
       );
 
       if (controlCharsIndex < 0 && !isComponentTag) {
@@ -186,7 +201,7 @@ function parseTemplateInPlaceV2(template) {
               value: unparsedFragment.slice(0, controlCharsIndex + 1),
             });
           } else if (!isAttr) {
-            // Handle interpolated component attributes
+            // Handle non-interpolated component attributes
 
             const name = unparsedFragment.slice(
               unparsedFragment
@@ -258,11 +273,16 @@ function parseTemplateInPlaceV2(template) {
           isComponentTag = false;
 
           break;
+        // DEV: put this higher up?
+        case " ":
+          break;
       }
 
       unparsedFragment = controlChars
         ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
         : "";
+
+      // DEV: this could work for non-components?
 
       // Handle component props and interpolated attributes
       if (
@@ -335,6 +355,8 @@ function renderToString(key, node, result = { html: "" }) {
   if (!template.parsedHtmlFragments) {
     parseTemplateInPlaceV2(template);
   }
+
+  console.log(JSON.stringify(template, null, 2));
 
   template.parsedHtmlFragments.forEach((phrase, i) => {
     const childKey =
@@ -441,7 +463,6 @@ function renderToString(key, node, result = { html: "" }) {
   return result.html;
 }
 
-// DEV: the performance is looking quite good
 function ArrayTest() {
   return html`
     ${new Array(3).fill(null).map((_, i) => {
@@ -475,7 +496,6 @@ function WithChildren({ children }) {
 
 WithChildren.components = { Button, WithChildren, ArrayTest };
 
-// DEV: hlx needs to be able to handle comments
 const Component = () => {
   const nonce = Math.round(Math.random() * 1_000);
 
@@ -483,15 +503,11 @@ const Component = () => {
     <div style=${"border: 1px dashed black;"}>this is super cool</div>
   `;
 
-  // DEV: looks like non-interpolated children are actually being handled
-  // correctly
-
   const evenStyle = "color: blue;";
   const oddStyle = "color: red;";
 
   const theEnd = "the end";
 
-  // DEV: seems like this might be the way to go
   // return html`
   //   <div>
   //     ${new Array(3).fill(null).map((_, i) => {
@@ -517,7 +533,7 @@ const Component = () => {
 
   return html`
     hi there
-    <WithChildren>
+    <WithChildren id="my-component">
       hello world
       <WithChildren>
         hello again
