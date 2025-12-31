@@ -335,9 +335,12 @@ function parseTemplateInPlaceV2(template) {
           .toSpliced(attrStart, attrName.length + 1)
           .join("");
 
-        const tagStart = phrases.findLastIndex((phrase) => phrase.tagStart);
-        phrases[tagStart].eventListeners ||= [];
-        phrases[tagStart].eventListeners.push({
+        const identifier = phrases.findLast(
+          (phrase) => phrase.type === phraseTypes.IDENTIFIER
+        );
+
+        identifier.listeners ||= [];
+        identifier.listeners.push({
           event: attrName.slice(2).toLowerCase(),
           templateChildIndex: i,
         });
@@ -360,7 +363,7 @@ let propsByKey = {};
 
 // DEV: you're going to need to also return event listeners and identifiers as
 // well so that listeners can be attached
-function renderToString(key, node, result = { html: "" }) {
+function renderToString(key, node, result = { html: "", listeners: {} }) {
   currentInstanceStack.push({ key });
 
   const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
@@ -380,10 +383,18 @@ function renderToString(key, node, result = { html: "" }) {
 
     switch (phrase.type) {
       case phraseTypes.IDENTIFIER:
-        result.html += `<!-- ${[
+        const identifier = [
           phrase.prefix || currentInstanceStack.at(-1).key,
           phrase.suffix.toString(32),
-        ].join(" ")} -->`;
+        ].join(" ");
+
+        // DEV: this is where you need to do the replacement
+        if (Array.isArray(phrase.listeners)) {
+          result.listeners[identifier] ||= [];
+          result.listeners[identifier].push(...phrase.listeners);
+        }
+
+        result.html += `<!-- ${identifier} -->`;
         break;
       case phraseTypes.HTML:
         result.html += phrase.value;
@@ -472,7 +483,7 @@ function renderToString(key, node, result = { html: "" }) {
   });
 
   currentInstanceStack.pop();
-  return result.html;
+  return result;
 }
 
 function ArrayTest() {
@@ -515,8 +526,8 @@ const Component = () => {
     <div style=${"border: 1px dashed black;"}>this is super cool</div>
   `;
 
-  const evenStyle = "color: blue;";
-  const oddStyle = "color: red;";
+  const evenStyle = "border: 1px dashed gray; width: fit-content;";
+  const oddStyle = "border: 1px solid black; width: fit-content;";
 
   const theEnd = "the end";
 
@@ -524,7 +535,7 @@ const Component = () => {
     <div>
       ${new Array(3).fill(null).map(
         (_, i) => html("my-key-" + i)`
-        <div style=${i % 2 === 0 ? oddStyle : evenStyle}>
+        <div>
           hello world
           <button onClick=${() => {}}>press me</button>
         </div>
@@ -594,4 +605,6 @@ const result = renderToString("root", Component);
 
 const root = document.getElementById("root");
 
-root.innerHTML = result;
+root.innerHTML = result.html;
+
+console.log("all listeners:", result.listeners);
