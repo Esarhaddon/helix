@@ -66,6 +66,11 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   };
 }
 
+// TODO: one layer of indirection between the actual event listeners and the
+// interpolated functions would allow listeners to be attached before all the JS
+// had loaded
+// - what about serializing event listeners in the dom?
+
 const cache = {};
 
 function parseTemplateInPlaceV2(template) {
@@ -105,11 +110,6 @@ function parseTemplateInPlaceV2(template) {
       pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: prevSuffix() });
     }
 
-    // DEV: spaces in opening tags followed by a charater other than ">" or " "
-    // should also be control characters since they represent attribute
-    // definitions
-    // - can you handle attribute definitions for components the same way?
-    // - attributes that aren't interpolated can be left alone
     let unparsedFragment = fragment;
     while (unparsedFragment.length) {
       let controlCharsIndex = unparsedFragment.split("").findIndex(
@@ -129,15 +129,6 @@ function parseTemplateInPlaceV2(template) {
             unparsedFragment[i + 1] === "/") ||
           // Tag end
           (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")
-        // DEV
-        // - you used a different technique for interpolated component attrs
-        // (isOpeningTag &&
-        //   !isAttr &&
-        //   // DEV: don't worry about handling boolean shorthand attributes for
-        //   // now
-        //   char === " " &&
-        //   unparsedFragment.endsWith("=") &&
-        //   !unparsedFragment.slice(i).includes(" "))
       );
 
       if (controlCharsIndex < 0 && !isComponentTag) {
@@ -273,27 +264,11 @@ function parseTemplateInPlaceV2(template) {
           isComponentTag = false;
 
           break;
-        // DEV: put this higher up?
-        // case " ":
-        //   // DEV: whoops, you aldready have something that handles interpolated
-        //   // attrs
-
-        //   const name = unparsedFragment.slice(0, 1);
-
-        //   console.log("ATTR NAME:", name);
-
-        //   break;
       }
 
-      unparsedFragment =
-        // DEV: hmm, it's not good to have special cases everywhere
-        controlChars === " "
-          ? ""
-          : controlChars
-          ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
-          : "";
-
-      // DEV: this could work for non-components?
+      unparsedFragment = controlChars
+        ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
+        : "";
 
       // Handle component props and interpolated attributes
       if (
@@ -315,7 +290,7 @@ function parseTemplateInPlaceV2(template) {
       }
     }
 
-    // Handle slots and non-component attributes
+    // Handle slots, non-component attributes, and inline event listeners
     if (
       !isOpeningTag &&
       !isClosingTag &&
@@ -330,24 +305,15 @@ function parseTemplateInPlaceV2(template) {
         type: "slot",
       });
     } else if (isOpeningTag && !isComponentTag) {
-      // DEV: is this going to be true for all children of components?
       // TODO: this would also be the place to handle passing objects
-
-      // DEV: here's where to handle event handlers
 
       const phrases = levelsStack.at(-1).phrases;
       const start = phrases.findLastIndex((phrase) => phrase.tagStart);
-      console.log("starting index", start);
-      console.log(
-        "starting phrase:",
-        JSON.stringify(phrases[start - 1], null, 2)
-      );
 
       if (
         !phrases[start - 1] ||
         phrases[start - 1].type !== phraseTypes.IDENTIFIER
       ) {
-        console.log("inserting identifier");
         phrases.splice(start, 0, {
           type: phraseTypes.IDENTIFIER,
           suffix,
@@ -355,34 +321,34 @@ function parseTemplateInPlaceV2(template) {
         suffix++;
       }
 
-      console.log("info:", prevPhrase().value);
-
       const attrStart =
         prevPhrase()
           .value.split("")
           .findLastIndex((char) => char === " ") + 1;
       const attrName = prevPhrase().value.slice(attrStart, -1);
 
-      console.log({ attrName });
+      if (attrName.startsWith("on")) {
+        // Strip out inline event listeners so they can be attached later
 
-      // DEV: why are identifiers missing at the top level?
+        prevPhrase().value = prevPhrase()
+          .value.split("")
+          .toSpliced(attrStart, attrName.length + 1)
+          .join("");
 
-      // if (attrName.startsWith("on")) {
-      //   // DEV: this isn't quite right
-      //   prevPhrase().value = prevPhrase()
-      //     .value.split("")
-      //     .toSpliced(attrStart, attrName.length + 1)
-      //     .join("");
-      //   phrases[start].eventListeners ||= [];
-      //   phrases[start].eventListeners.push({ event: attrName });
-      // } else {
-      pushPhrase({
-        type: phraseTypes.ATTRIBUTE,
-        templateChildIndex: i,
-        type: "attribute",
-      });
+        const tagStart = phrases.findLastIndex((phrase) => phrase.tagStart);
+        phrases[tagStart].eventListeners ||= [];
+        phrases[tagStart].eventListeners.push({
+          event: attrName.slice(2).toLowerCase(),
+          templateChildIndex: i,
+        });
+      } else {
+        pushPhrase({
+          type: phraseTypes.ATTRIBUTE,
+          templateChildIndex: i,
+          type: "attribute",
+        });
+      }
     }
-    // }
   });
 
   template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
@@ -392,6 +358,8 @@ function parseTemplateInPlaceV2(template) {
 let currentInstanceStack = [];
 let propsByKey = {};
 
+// DEV: you're going to need to also return event listeners and identifiers as
+// well so that listeners can be attached
 function renderToString(key, node, result = { html: "" }) {
   currentInstanceStack.push({ key });
 
@@ -534,7 +502,7 @@ function WithChildren({ children }) {
   return html`
     <br />
     children:
-    <div>${children}</div>
+    <div onKeyDown=${() => {}}>${children}</div>
   `;
 }
 
@@ -580,13 +548,13 @@ const Component = () => {
     <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
     <WithChildren>
       hello world
-      <div class=${"my-div"}>how about here</div>
+      <div class=${"my-div"} onMouseMove=${() => {}}>how about here</div>
       <WithChildren>
         hello again
         <WithChildren>it's working!</WithChildren>
       </WithChildren>
     </WithChildren>
-    <button>
+    <button onClick=${() => {}}>
       <span>press me</span>
     </button>
   `;
