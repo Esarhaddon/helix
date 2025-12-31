@@ -128,17 +128,16 @@ function parseTemplateInPlaceV2(template) {
             char === "<" &&
             unparsedFragment[i + 1] === "/") ||
           // Tag end
-          (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")(
-            // DEV
-            // - you used a different technique for interpolated component attrs
-            isOpeningTag &&
-              !isAttr &&
-              // DEV: don't worry about handling boolean shorthand attributes for
-              // now
-              char === " " &&
-              unparsedFragment.endsWith("=") &&
-              !unparsedFragment.slice(i).includes(" ")
-          )
+          (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")
+        // DEV
+        // - you used a different technique for interpolated component attrs
+        // (isOpeningTag &&
+        //   !isAttr &&
+        //   // DEV: don't worry about handling boolean shorthand attributes for
+        //   // now
+        //   char === " " &&
+        //   unparsedFragment.endsWith("=") &&
+        //   !unparsedFragment.slice(i).includes(" "))
       );
 
       if (controlCharsIndex < 0 && !isComponentTag) {
@@ -168,6 +167,7 @@ function parseTemplateInPlaceV2(template) {
             suffix++;
           }
 
+          // DEV: this is an odd way of doing things
           pushPhrase({ type: phraseTypes.HTML, tagStart: true, value: "<" });
 
           if (isComponentTag) {
@@ -274,13 +274,24 @@ function parseTemplateInPlaceV2(template) {
 
           break;
         // DEV: put this higher up?
-        case " ":
-          break;
+        // case " ":
+        //   // DEV: whoops, you aldready have something that handles interpolated
+        //   // attrs
+
+        //   const name = unparsedFragment.slice(0, 1);
+
+        //   console.log("ATTR NAME:", name);
+
+        //   break;
       }
 
-      unparsedFragment = controlChars
-        ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
-        : "";
+      unparsedFragment =
+        // DEV: hmm, it's not good to have special cases everywhere
+        controlChars === " "
+          ? ""
+          : controlChars
+          ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
+          : "";
 
       // DEV: this could work for non-components?
 
@@ -319,13 +330,24 @@ function parseTemplateInPlaceV2(template) {
         type: "slot",
       });
     } else if (isOpeningTag && !isComponentTag) {
+      // DEV: is this going to be true for all children of components?
+      // TODO: this would also be the place to handle passing objects
+
+      // DEV: here's where to handle event handlers
+
       const phrases = levelsStack.at(-1).phrases;
       const start = phrases.findLastIndex((phrase) => phrase.tagStart);
+      console.log("starting index", start);
+      console.log(
+        "starting phrase:",
+        JSON.stringify(phrases[start - 1], null, 2)
+      );
 
       if (
         !phrases[start - 1] ||
-        !(phrases[start - 1].type !== phraseTypes.IDENTIFIER)
+        phrases[start - 1].type !== phraseTypes.IDENTIFIER
       ) {
+        console.log("inserting identifier");
         phrases.splice(start, 0, {
           type: phraseTypes.IDENTIFIER,
           suffix,
@@ -333,12 +355,34 @@ function parseTemplateInPlaceV2(template) {
         suffix++;
       }
 
+      console.log("info:", prevPhrase().value);
+
+      const attrStart =
+        prevPhrase()
+          .value.split("")
+          .findLastIndex((char) => char === " ") + 1;
+      const attrName = prevPhrase().value.slice(attrStart, -1);
+
+      console.log({ attrName });
+
+      // DEV: why are identifiers missing at the top level?
+
+      // if (attrName.startsWith("on")) {
+      //   // DEV: this isn't quite right
+      //   prevPhrase().value = prevPhrase()
+      //     .value.split("")
+      //     .toSpliced(attrStart, attrName.length + 1)
+      //     .join("");
+      //   phrases[start].eventListeners ||= [];
+      //   phrases[start].eventListeners.push({ event: attrName });
+      // } else {
       pushPhrase({
         type: phraseTypes.ATTRIBUTE,
         templateChildIndex: i,
         type: "attribute",
       });
     }
+    // }
   });
 
   template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
@@ -533,8 +577,10 @@ const Component = () => {
 
   return html`
     hi there
-    <WithChildren id="my-component">
+    <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
+    <WithChildren>
       hello world
+      <div class=${"my-div"}>how about here</div>
       <WithChildren>
         hello again
         <WithChildren>it's working!</WithChildren>
