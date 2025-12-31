@@ -520,18 +520,18 @@ const Component = () => {
 
   const theEnd = "the end";
 
-  // return html`
-  //   <div>
-  //     ${new Array(3).fill(null).map((_, i) => {
-  //       return html("my-key-" + i)`
-  //       <div>
-  //         hello world
-  //         <button>press me</button>
-  //       </div>
-  //     `;
-  //     })}
-  //   </div>
-  // `;
+  return html`
+    <div>
+      ${new Array(3).fill(null).map(
+        (_, i) => html("my-key-" + i)`
+        <div style=${i % 2 === 0 ? oddStyle : evenStyle}>
+          hello world
+          <button onClick=${() => {}}>press me</button>
+        </div>
+      `
+      )}
+    </div>
+  `;
 
   // return html`
   //   <WithChildren>
@@ -543,21 +543,21 @@ const Component = () => {
   //   </button>
   // `;
 
-  return html`
-    hi there
-    <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
-    <WithChildren>
-      hello world
-      <div class=${"my-div"} onMouseMove=${() => {}}>how about here</div>
-      <WithChildren>
-        hello again
-        <WithChildren>it's working!</WithChildren>
-      </WithChildren>
-    </WithChildren>
-    <button onClick=${() => {}}>
-      <span>press me</span>
-    </button>
-  `;
+  // return html`
+  //   hi there
+  //   <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
+  //   <WithChildren>
+  //     hello world
+  //     <div class=${"my-div"} onMouseMove=${() => {}}>how about here</div>
+  //     <WithChildren>
+  //       hello again
+  //       <WithChildren>it's working!</WithChildren>
+  //     </WithChildren>
+  //   </WithChildren>
+  //   <button onClick=${() => {}}>
+  //     <span>press me</span>
+  //   </button>
+  // `;
 
   // return hlx`
   //   <div data-nonce=${nonce}>
