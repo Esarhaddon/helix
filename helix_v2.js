@@ -66,6 +66,13 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
   };
 }
 
+// TODO: pretty sure it would make sense to call toString on functions before
+// comparing them when deciding to re-render
+// - they latest function would still be used in the props object, but if
+//   f1.toString() === f2.toString() you wouldn't re-render the component
+// - there are probably still some edge cases where this would lead to stale
+//   values, but do they matter?
+
 // TODO: one layer of indirection between the actual event listeners and the
 // interpolated functions would allow listeners to be attached before all the JS
 // had loaded
@@ -339,6 +346,7 @@ function parseTemplateInPlaceV2(template) {
           (phrase) => phrase.type === phraseTypes.IDENTIFIER
         );
 
+        // DEV: events should go on the top level parsed node
         identifier.listeners ||= [];
         identifier.listeners.push({
           event: attrName.slice(2).toLowerCase(),
@@ -361,8 +369,11 @@ function parseTemplateInPlaceV2(template) {
 let currentInstanceStack = [];
 let propsByKey = {};
 
+// DEV: some of this work will need to be done by the render fn
+
 // DEV: you're going to need to also return event listeners and identifiers as
 // well so that listeners can be attached
+// - maybe not if those are going to be available via the parsed node
 function renderToString(key, node, result = { html: "", listeners: {} }) {
   currentInstanceStack.push({ key });
 
