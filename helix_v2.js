@@ -375,8 +375,12 @@ let propsByKey = {};
 // well so that listeners can be attached
 // - maybe not if those are going to be available via the parsed node
 function renderToString(key, node, result = { html: "", listeners: {} }) {
+  // DEV: what is the relationship between this and what you're going to need to
+  // use for the render fn?
+  // - for the render function do you just need a single key?
   currentInstanceStack.push({ key });
 
+  // DEV: you should be able to drop this
   const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
   if (!template.parsedHtmlFragments) {
     parseTemplateInPlaceV2(template);
@@ -495,6 +499,42 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
   currentInstanceStack.pop();
   return result;
+}
+
+const nodes = {};
+
+// DEV: what is the relationship between slots and components?
+// - things like signals and hooks will need to be keyed by component
+//   identifiers
+// - slot identifiers only matter for making updates to the dom and checking
+//   whether or not the slot template has changed?
+
+// DEV: render should only be called on component nodes?
+function render(
+  node,
+  // should be safe to assume when rendering that key will always mark the start
+  // and end of a slot or component
+  key
+) {
+  let template;
+
+  if (node._isTemplateNode) {
+    template = node;
+  } else if (typeof node === "function") {
+    template = node(propsByKey[key] || {});
+  } else {
+    throw new Error("Encountered malforned node", { cause: node });
+  }
+
+  if (!template.parsedHtmlFragments) {
+    parseTemplateInPlaceV2(template);
+  }
+
+  if (nodes[key]) {
+    // no need to render to string
+  } else {
+    // we need to render to string and update the dom
+  }
 }
 
 function ArrayTest() {
