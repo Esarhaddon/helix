@@ -346,7 +346,7 @@ function parseTemplateInPlaceV2(template) {
           (phrase) => phrase.type === phraseTypes.IDENTIFIER
         );
 
-        // DEV: events should go on the top level parsed node
+        // DEV: listeners should go on the top level parsed node
         identifier.listeners ||= [];
         identifier.listeners.push({
           event: attrName.slice(2).toLowerCase(),
@@ -366,6 +366,7 @@ function parseTemplateInPlaceV2(template) {
   cache[template.hash] = template.parsedHtmlFragments;
 }
 
+// DEV: you'll need to share this with the render fn
 let currentInstanceStack = [];
 let propsByKey = {};
 
@@ -479,6 +480,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
               return phrase;
             };
 
+            // DEV: you'll have to do this in the render fn as well
             const children = {
               _isTemplateNode: true,
               components: node.components,
@@ -510,6 +512,7 @@ const nodes = {};
 //   whether or not the slot template has changed?
 
 // DEV: render should only be called on component nodes?
+// - slots as well?
 function render(
   node,
   // should be safe to assume when rendering that key will always mark the start
@@ -530,9 +533,24 @@ function render(
     parseTemplateInPlaceV2(template);
   }
 
-  if (nodes[key]) {
+  // DEV: what is the proper way to handle slots?
+  if (nodes[key] && nodes[key].hash === template.hash) {
     // no need to render to string
+    // - handle attributes
+    // - handle slots
+    //   - you may need to recursiveley call render to handle slots?
+    //   - how to properly handle nested slots?
   } else {
+    // Clear unmounted nodes from the cache
+    if (nodes[key]) {
+      Object.keys(nodes).forEach((item) => {
+        // DEV: you're also going to need to clean up event listeners
+        if (item.startsWith(key)) {
+          delete nodes[item];
+        }
+      });
+    }
+
     // we need to render to string and update the dom
   }
 }
