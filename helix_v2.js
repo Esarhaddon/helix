@@ -38,17 +38,17 @@ function mergePhrases(phrases) {
 function html(stringsOrConfig, ...children) {
   if (Array.isArray(stringsOrConfig)) {
     const strings = stringsOrConfig;
-    return getTemplateBuilderV2(undefined, strings, ...children)();
+    return getTemplateBuilder(undefined, strings, ...children)();
   } else if (typeof stringsOrConfig === "string") {
     const key = stringsOrConfig;
-    return getTemplateBuilderV2(key);
+    return getTemplateBuilder(key);
   } else {
     const config = stringsOrConfig;
-    return getTemplateBuilderV2(config.key);
+    return getTemplateBuilder(config.key);
   }
 }
 
-function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
+function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
   return (strings, ...children) => {
     const htmlFragments = [...(strings || defaultStrings)];
 
@@ -62,6 +62,10 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
       hash: htmlFragments.join("_"),
       htmlFragments,
       templateChildren: children.length ? children : defaultChildren,
+      // DEV: hmm
+      slots: [],
+      attributes: [],
+      listeners: [],
     };
   };
 }
@@ -78,9 +82,15 @@ function getTemplateBuilderV2(key, defaultStrings, ...defaultChildren) {
 // had loaded
 // - what about serializing event listeners in the dom?
 
+// DEV: next step is to make sure that attributes, events, and slots all end up
+// in the parsed template such that it's simple for the render fn to compare
+// them across renders.
+// - This might be a little bit at odds with the format that renderToString
+//   needs the template to be in
+
 const cache = {};
 
-function parseTemplateInPlaceV2(template) {
+function parseTemplateInPlace(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
   let isComponentTag = false;
@@ -277,7 +287,7 @@ function parseTemplateInPlaceV2(template) {
         ? unparsedFragment.slice(controlCharsIndex + controlChars.length)
         : "";
 
-      // Handle component props and interpolated attributes
+      // Handle component props and interpolated component attributes
       if (
         !unparsedFragment &&
         isComponentTag &&
@@ -303,6 +313,10 @@ function parseTemplateInPlaceV2(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
+      template.slots.push({
+        templateChildIndex: i,
+      });
+
       pushPhrase({ type: phraseTypes.IDENTIFIER, suffix });
       suffix++;
 
@@ -346,7 +360,9 @@ function parseTemplateInPlaceV2(template) {
           (phrase) => phrase.type === phraseTypes.IDENTIFIER
         );
 
-        // DEV: listeners should go on the top level parsed node
+        // DEV: listeners should go on the top level parsed template
+        // - what's the best way to link identifiers in the template with stuff
+        //   defined at the top?
         identifier.listeners ||= [];
         identifier.listeners.push({
           event: attrName.slice(2).toLowerCase(),
@@ -370,11 +386,8 @@ function parseTemplateInPlaceV2(template) {
 let currentInstanceStack = [];
 let propsByKey = {};
 
-// DEV: some of this work will need to be done by the render fn
+// DEV: some of this work will need to be done by the render fn?
 
-// DEV: you're going to need to also return event listeners and identifiers as
-// well so that listeners can be attached
-// - maybe not if those are going to be available via the parsed node
 function renderToString(key, node, result = { html: "", listeners: {} }) {
   // DEV: what is the relationship between this and what you're going to need to
   // use for the render fn?
@@ -384,7 +397,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
   // DEV: you should be able to drop this
   const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
   if (!template.parsedHtmlFragments) {
-    parseTemplateInPlaceV2(template);
+    parseTemplateInPlace(template);
   }
 
   console.log(JSON.stringify(template, null, 2));
@@ -487,6 +500,10 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
               templateChildren,
               parsedHtmlFragments:
                 phrase.parsedHtmlFragments.map(prefixPhrases),
+              // DEV: hmm
+              slots: [],
+              attributes: [],
+              listeners: [],
             };
 
             propsByKey[childKey] = { ...propsByKey[childKey], children };
@@ -530,7 +547,7 @@ function render(
   }
 
   if (!template.parsedHtmlFragments) {
-    parseTemplateInPlaceV2(template);
+    parseTemplateInPlace(template);
   }
 
   // DEV: what is the proper way to handle slots?
