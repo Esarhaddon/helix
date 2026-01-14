@@ -88,6 +88,11 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 // - This might be a little bit at odds with the format that renderToString
 //   needs the template to be in
 
+// DEV: this doesn't seem to be working quite like you expected
+// - things on the same level weren't getting cached?
+// - that would explain why you didn't see any speed ups in arrays with many
+//   elements when caching vs not
+// - actually, it was mostly working correctly?
 const cache = {};
 
 function parseTemplateInPlace(template) {
@@ -96,12 +101,17 @@ function parseTemplateInPlace(template) {
   let isComponentTag = false;
   let isAttr = false;
 
-  const result = cache[template.hash] || [];
-  template.parsedHtmlFragments = result;
+  // const result = cache[template.hash] || [];
+  // template.parsedHtmlFragments = result;
 
-  if (result.length) {
-    return;
-  }
+  // if (result.length) {
+  //   console.log("cache hit for", template.hash);
+  //   return;
+  // }
+
+  // DEV: drop the cache for now
+  const result = [];
+  template.parsedHtmlFragments = result;
 
   let suffix = 0;
   const levelsStack = [{ phrases: result }];
@@ -313,10 +323,13 @@ function parseTemplateInPlace(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
+      // DEV: hmm, maybe all phrase details should live at the top level?
       template.slots.push({
         templateChildIndex: i,
       });
 
+      // DEV: you need a way to associate identifiers with slots, listeners, and
+      // attributes stored at the top level
       pushPhrase({ type: phraseTypes.IDENTIFIER, suffix });
       suffix++;
 
@@ -406,6 +419,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
     const childKey =
       template.parsedHtmlFragments[i - 1]?.type === phraseTypes.IDENTIFIER &&
       `${
+        // DEV: here and elsewhere you could just add the suffix to the template
         template.parsedHtmlFragments[i - 1].prefix ||
         currentInstanceStack.at(-1).key
       } ${template.parsedHtmlFragments[i - 1].suffix.toString(32)}`;
@@ -416,6 +430,9 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           phrase.prefix || currentInstanceStack.at(-1).key,
           phrase.suffix.toString(32),
         ].join(" ");
+
+        // DEV: this might be the most convenient place right now to associate
+        // slots, attributes, and listeners with identifiers?
 
         // DEV: this is where you need to do the replacement
         if (Array.isArray(phrase.listeners)) {
@@ -482,7 +499,16 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
                 : null;
             });
 
-            const prefixPhrases = (phrase) => {
+            // DEV: props and attrs for the component itself are under keys on
+            // the phrase for the component
+
+            // DEV: how does this work with the cache?
+            // - you'll need to get rid of the mutation to allow caching
+            // - that will be slightly trickier than you though at first
+            // - pretty sure it wasn't obviously breaking the cache because all
+            //   the relevant identifiers had the same prefix
+            const prefixPhrases = ({ ...phrase }) => {
+              // DEV: is the spread enough to keep from mutating the cache?
               if (phrase.type === phraseTypes.IDENTIFIER) {
                 phrase.prefix = phrase.prefix || key;
               } else if (phrase.type === phraseTypes.COMPONENT) {
@@ -617,18 +643,18 @@ const Component = () => {
 
   const theEnd = "the end";
 
-  return html`
-    <div>
-      ${new Array(3).fill(null).map(
-        (_, i) => html("my-key-" + i)`
-        <div>
-          hello world
-          <button onClick=${() => {}}>press me</button>
-        </div>
-      `
-      )}
-    </div>
-  `;
+  // return html`
+  //   <div>
+  //     ${new Array(3).fill(null).map(
+  //       (_, i) => html("my-key-" + i)`
+  //       <div>
+  //         hello world
+  //         <button onClick=${() => {}}>press me</button>
+  //       </div>
+  //     `
+  //     )}
+  //   </div>
+  // `;
 
   // return html`
   //   <WithChildren>
@@ -640,21 +666,21 @@ const Component = () => {
   //   </button>
   // `;
 
-  // return html`
-  //   hi there
-  //   <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
-  //   <WithChildren>
-  //     hello world
-  //     <div class=${"my-div"} onMouseMove=${() => {}}>how about here</div>
-  //     <WithChildren>
-  //       hello again
-  //       <WithChildren>it's working!</WithChildren>
-  //     </WithChildren>
-  //   </WithChildren>
-  //   <button onClick=${() => {}}>
-  //     <span>press me</span>
-  //   </button>
-  // `;
+  return html`
+    hi there
+    <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
+    <WithChildren>
+      hello world
+      <div class=${"my-div"} onMouseMove=${() => {}}>how about here</div>
+      <WithChildren>
+        hello again
+        <WithChildren>it's working!</WithChildren>
+      </WithChildren>
+    </WithChildren>
+    <button onClick=${() => {}}>
+      <span>press me</span>
+    </button>
+  `;
 
   // return hlx`
   //   <div data-nonce=${nonce}>
