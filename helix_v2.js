@@ -333,8 +333,8 @@ function parseTemplateInPlace(template) {
       template.identifiers.push({ suffix });
       suffix++;
 
-      // DEV: here and elsewhere, you shouldn't push directly on to the top level
-      // template
+      // DEV: here and elsewhere, you shouldn't push directly on to the top
+      // level template
 
       // DEV: hmm, maybe all phrase details should live at the top level?
       template.slots.push({
