@@ -63,6 +63,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
       htmlFragments,
       templateChildren: children.length ? children : defaultChildren,
       // DEV: hmm
+      identifiers: [],
       slots: [],
       attributes: [],
       listeners: [],
@@ -155,7 +156,7 @@ function parseTemplateInPlace(template) {
             char === "<" &&
             unparsedFragment[i + 1] === "/") ||
           // Tag end
-          (((isOpeningTag && !isAttr) || isClosingTag) && char === ">")
+          (((isOpeningTag && !isAttr) || isClosingTag) && char === ">"),
       );
 
       if (controlCharsIndex < 0 && !isComponentTag) {
@@ -201,7 +202,7 @@ function parseTemplateInPlace(template) {
                     .split("")
                     // TODO: figure out what characters should be allowed in
                     // component names
-                    .findIndex((char) => !/[a-z0-9]/i.test(char))
+                    .findIndex((char) => !/[a-z0-9]/i.test(char)),
               ),
               isOpeningTag: true,
               value: "",
@@ -225,14 +226,14 @@ function parseTemplateInPlace(template) {
               unparsedFragment
                 .slice(0, controlCharsIndex - 1)
                 .lastIndexOf(" ") + 1,
-              controlCharsIndex - 1
+              controlCharsIndex - 1,
             );
 
             const value = unparsedFragment.slice(
               controlCharsIndex + 1,
               controlCharsIndex +
                 1 +
-                unparsedFragment.slice(controlCharsIndex + 1).indexOf('"')
+                unparsedFragment.slice(controlCharsIndex + 1).indexOf('"'),
             );
 
             prevPhrase().attrs ||= [];
@@ -251,13 +252,13 @@ function parseTemplateInPlace(template) {
             type: phraseTypes.HTML,
             value: unparsedFragment.slice(
               0,
-              isComponentTag ? controlCharsIndex : controlCharsIndex + 2
+              isComponentTag ? controlCharsIndex : controlCharsIndex + 2,
             ),
           });
 
           if (isComponentTag) {
             levelsStack.at(-1).parent.parsedHtmlFragments = mergePhrases(
-              levelsStack.at(-1).phrases
+              levelsStack.at(-1).phrases,
             );
             levelsStack.pop();
           }
@@ -323,15 +324,23 @@ function parseTemplateInPlace(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
-      // DEV: hmm, maybe all phrase details should live at the top level?
-      template.slots.push({
-        templateChildIndex: i,
-      });
+      // DEV: might be a good idea to just have suffixes live in the top level
+      // identifiers array
 
       // DEV: you need a way to associate identifiers with slots, listeners, and
       // attributes stored at the top level
       pushPhrase({ type: phraseTypes.IDENTIFIER, suffix });
+      template.identifiers.push({ suffix });
       suffix++;
+
+      // DEV: here and elsewhere, you shouldn't push directly on to the top level
+      // template
+
+      // DEV: hmm, maybe all phrase details should live at the top level?
+      template.slots.push({
+        templateChildIndex: i,
+        identifierIndex: template.identifiers.length - 1,
+      });
 
       pushPhrase({
         type: phraseTypes.SLOT,
@@ -352,6 +361,7 @@ function parseTemplateInPlace(template) {
           type: phraseTypes.IDENTIFIER,
           suffix,
         });
+        template.identifiers.push({ suffix });
         suffix++;
       }
 
@@ -369,19 +379,18 @@ function parseTemplateInPlace(template) {
           .toSpliced(attrStart, attrName.length + 1)
           .join("");
 
-        const identifier = phrases.findLast(
-          (phrase) => phrase.type === phraseTypes.IDENTIFIER
-        );
+        // DEV: seems like you could dry this up a bit
 
-        // DEV: listeners should go on the top level parsed template
-        // - what's the best way to link identifiers in the template with stuff
-        //   defined at the top?
-        identifier.listeners ||= [];
-        identifier.listeners.push({
-          event: attrName.slice(2).toLowerCase(),
+        template.listeners.push({
           templateChildIndex: i,
+          event: attrName.slice(2).toLowerCase(),
+          identifierIndex: template.identifiers.length - 1,
         });
       } else {
+        template.attributes.push({
+          templateChildIndex: i,
+          identifierIndex: template.identifiers.length - 1,
+        });
         pushPhrase({
           type: phraseTypes.ATTRIBUTE,
           templateChildIndex: i,
@@ -435,6 +444,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
         // slots, attributes, and listeners with identifiers?
 
         // DEV: this is where you need to do the replacement
+        // - actually, you don't need this?
         if (Array.isArray(phrase.listeners)) {
           result.listeners[identifier] ||= [];
           result.listeners[identifier].push(...phrase.listeners);
@@ -465,13 +475,13 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
         } else if (Array.isArray(value)) {
           if (!value.every((item) => item._isTemplateNode)) {
             throw new Error(
-              "Each element in an array must be wrapped in html(key)`...`"
+              "Each element in an array must be wrapped in html(key)`...`",
             );
           }
 
           if (!value.every((item) => item.assignedkey)) {
             throw new Error(
-              "Each element in an array must have a key. Pass one like this: html(key)`...`"
+              "Each element in an array must have a key. Pass one like this: html(key)`...`",
             );
           }
 
@@ -492,6 +502,10 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
         ) {
           if (phrase.parsedHtmlFragments.length) {
             const templateChildren = [];
+
+            // DEV: hmm, doesn't really make sense for this to be a ternary
+            // - also, pretty sure just making a shallow copy of the
+            //   templateChildren array would be easier and have the same effect
             phrase.parsedHtmlFragments.forEach((fragment) => {
               "templateChildIndex" in fragment
                 ? (templateChildren[fragment.templateChildIndex] =
@@ -499,8 +513,15 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
                 : null;
             });
 
+            // DEV: you'll need to go through the parent attributes, slots and
+            // listeners and add them to the child template
+            // - actually, seems like this should be part of the parsing logic
+
             // DEV: props and attrs for the component itself are under keys on
             // the phrase for the component
+
+            // DEV: don't think there's a way around the mutation. You'll need
+            // to use structuredClone or similar
 
             // DEV: how does this work with the cache?
             // - you'll need to get rid of the mutation to allow caching
@@ -526,7 +547,13 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
               templateChildren,
               parsedHtmlFragments:
                 phrase.parsedHtmlFragments.map(prefixPhrases),
+
+              // DEV: not sure how you're going to populate these
+              // - you're going to have to do something like you do for
+              //   templateChildren
+
               // DEV: hmm
+              identifiers: [],
               slots: [],
               attributes: [],
               listeners: [],
@@ -560,7 +587,7 @@ function render(
   node,
   // should be safe to assume when rendering that key will always mark the start
   // and end of a slot or component
-  key
+  key,
 ) {
   let template;
 
