@@ -115,7 +115,7 @@ function parseTemplateInPlace(template) {
   template.parsedHtmlFragments = result;
 
   let suffix = 0;
-  const levelsStack = [{ phrases: result }];
+  const levelsStack = [{ phrases: result, parent: template }];
 
   function prevSuffix() {
     return levelsStack
@@ -207,6 +207,9 @@ function parseTemplateInPlace(template) {
               isOpeningTag: true,
               value: "",
               parsedHtmlFragments: [],
+              attributes: [],
+              listeners: [],
+              slots: [],
             });
           }
 
@@ -277,6 +280,8 @@ function parseTemplateInPlace(template) {
             unparsedFragment[controlCharsIndex - 1] !== "/"
           ) {
             levelsStack.push({
+              // DEV: not sure parent is the right name
+              // - maybe just push the phrase to the stack directly?
               parent: prevPhrase(),
               phrases: prevPhrase().parsedHtmlFragments,
             });
@@ -337,7 +342,7 @@ function parseTemplateInPlace(template) {
       // level template
 
       // DEV: hmm, maybe all phrase details should live at the top level?
-      template.slots.push({
+      levelsStack.at(-1).parent.slots.push({
         templateChildIndex: i,
         identifierIndex: template.identifiers.length - 1,
       });
@@ -381,13 +386,13 @@ function parseTemplateInPlace(template) {
 
         // DEV: seems like you could dry this up a bit
 
-        template.listeners.push({
+        levelsStack.at(-1).parent.listeners.push({
           templateChildIndex: i,
           event: attrName.slice(2).toLowerCase(),
           identifierIndex: template.identifiers.length - 1,
         });
       } else {
-        template.attributes.push({
+        levelsStack.at(-1).parent.attributes.push({
           templateChildIndex: i,
           identifierIndex: template.identifiers.length - 1,
         });
