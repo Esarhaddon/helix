@@ -61,15 +61,27 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
       assignedkey: key,
       hash: htmlFragments.join("_"),
       htmlFragments,
+      // DEV: this should be called something else
       templateChildren: children.length ? children : defaultChildren,
       // DEV: hmm
       identifiers: [],
       slots: [],
       attributes: [],
       listeners: [],
+      children: [],
     };
   };
 }
+
+// DEV: THE PLAN
+// - populate a children array on each template (like attributes, listeners,
+//   etc.). Keep in mind the distinction between templates and components used
+//   within a template
+// - this will allow the render function to easily compare children across
+//   renders
+// - you should get rid of some of the indirection: the template children array
+//   should be referenced by the attributes, listerners, etc. arrays, and these
+//   should be referenced by phrases
 
 // TODO: pretty sure it would make sense to call toString on functions before
 // comparing them when deciding to re-render
@@ -115,6 +127,7 @@ function parseTemplateInPlace(template) {
   template.parsedHtmlFragments = result;
 
   let suffix = 0;
+  // DEV: would be good to get rid of some of this indirection
   const levelsStack = [{ phrases: result, parent: template }];
 
   function prevSuffix() {
@@ -207,6 +220,8 @@ function parseTemplateInPlace(template) {
               isOpeningTag: true,
               value: "",
               parsedHtmlFragments: [],
+              // DEV: do you need an array for children?
+              // - you need a way to be able to compare children across renders
               attributes: [],
               listeners: [],
               slots: [],
@@ -259,6 +274,7 @@ function parseTemplateInPlace(template) {
             ),
           });
 
+          // DEV: pretty sure this is the spot to build children
           if (isComponentTag) {
             levelsStack.at(-1).parent.parsedHtmlFragments = mergePhrases(
               levelsStack.at(-1).phrases,
@@ -392,6 +408,7 @@ function parseTemplateInPlace(template) {
           identifierIndex: template.identifiers.length - 1,
         });
       } else {
+        // DEV: this seems a bit confused
         levelsStack.at(-1).parent.attributes.push({
           templateChildIndex: i,
           identifierIndex: template.identifiers.length - 1,
@@ -545,6 +562,8 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
               return phrase;
             };
 
+            // DEV: don't forget about the hash
+
             // DEV: you'll have to do this in the render fn as well
             const children = {
               _isTemplateNode: true,
@@ -559,6 +578,8 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
               // DEV: hmm
               identifiers: [],
+              // DEV: can you handle components here or do you need separate
+              // array for those?
               slots: [],
               attributes: [],
               listeners: [],
@@ -702,6 +723,9 @@ const Component = () => {
     hi there
     <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
     <WithChildren>
+      ${html`<span>
+        this is a slot ${html`<div>and this is a nested slot</div>`}
+      </span>`}
       hello world
       <div class=${"my-div"} onMouseMove=${() => {}}>how about here</div>
       <WithChildren>
