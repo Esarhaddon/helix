@@ -74,14 +74,15 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 }
 
 // DEV: THE PLAN
-// - populate a children array on each template (like attributes, listeners,
+// - [x] populate a children array on each template (like attributes, listeners,
 //   etc.). Keep in mind the distinction between templates and components used
 //   within a template
-// - this will allow the render function to easily compare children across
-//   renders
-// - you should get rid of some of the indirection: the template children array
-//   should be referenced by the attributes, listerners, etc. arrays, and these
-//   should be referenced by phrases
+//     - this will allow the render function to easily compare children across
+//       renders
+// - [ ] fix prefisPhrases
+// - [ ] you should get rid of some of the indirection: the template children
+//   array should be referenced by the attributes, listerners, etc. arrays, and
+//   these should be referenced by phrases
 
 // TODO: pretty sure it would make sense to call toString on functions before
 // comparing them when deciding to re-render
@@ -219,6 +220,8 @@ function parseTemplateInPlace(template) {
               ),
               isOpeningTag: true,
               value: "",
+              childrenIndex: levelsStack.at(-1).parent.children.length - 1,
+              // DEV: should be able to drop these
               parsedHtmlFragments: [],
               // DEV: do you need an array for children?
               // - you need a way to be able to compare children across renders
@@ -295,11 +298,29 @@ function parseTemplateInPlace(template) {
             isOpeningTag &&
             unparsedFragment[controlCharsIndex - 1] !== "/"
           ) {
+            // DEV: you're going to need to compute the hash later
+            // - also, should be able to get rid of the .parent indirection
+            levelsStack.at(-1).parent.children.push({
+              _isTemplateNode: true,
+              templateChildren: levelsStack.at(-1).parent.templateChildren,
+              parsedHtmlFragments: [],
+              children: [],
+              attributes: [],
+              listeners: [],
+              slots: [],
+            });
+
+            prevPhrase().childrenIndex =
+              levelsStack.at(-1).parent.children.length - 1;
+
             levelsStack.push({
               // DEV: not sure parent is the right name
               // - maybe just push the phrase to the stack directly?
-              parent: prevPhrase(),
-              phrases: prevPhrase().parsedHtmlFragments,
+              // parent: prevPhrase(),
+              // DEV: hmm
+              parent: levelsStack.at(-1).parent.children.at(-1),
+              phrases: levelsStack.at(-1).parent.children.at(-1)
+                .parsedHtmlFragments, // prevPhrase().parsedHtmlFragments,
             });
           } else if (
             isClosingTag ||
@@ -519,21 +540,27 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
         break;
       case phraseTypes.COMPONENT:
         if (
+          // DEV: should probably throw an error if we can't find the component
           phrase.tagName in node.components &&
           typeof node.components[phrase.tagName] === "function"
         ) {
-          if (phrase.parsedHtmlFragments.length) {
+          const children = template.children[phrase.childrenIndex];
+          console.log("the children", children);
+
+          if ("childrenIndex" in phrase) {
+            const children = template.children[phrase.childrenIndex];
+
             const templateChildren = [];
 
             // DEV: hmm, doesn't really make sense for this to be a ternary
             // - also, pretty sure just making a shallow copy of the
             //   templateChildren array would be easier and have the same effect
-            phrase.parsedHtmlFragments.forEach((fragment) => {
-              "templateChildIndex" in fragment
-                ? (templateChildren[fragment.templateChildIndex] =
-                    template.templateChildren[fragment.templateChildIndex])
-                : null;
-            });
+            // phrase.parsedHtmlFragments.forEach((fragment) => {
+            //   "templateChildIndex" in fragment
+            //     ? (templateChildren[fragment.templateChildIndex] =
+            //         template.templateChildren[fragment.templateChildIndex])
+            //     : null;
+            // });
 
             // DEV: you'll need to go through the parent attributes, slots and
             // listeners and add them to the child template
@@ -544,6 +571,8 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
             // DEV: don't think there's a way around the mutation. You'll need
             // to use structuredClone or similar
+
+            // DEV: you need to fix prefixPhrases
 
             // DEV: how does this work with the cache?
             // - you'll need to get rid of the mutation to allow caching
@@ -565,27 +594,30 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
             // DEV: don't forget about the hash
 
             // DEV: you'll have to do this in the render fn as well
-            const children = {
-              _isTemplateNode: true,
-              components: node.components,
-              templateChildren,
-              parsedHtmlFragments:
-                phrase.parsedHtmlFragments.map(prefixPhrases),
+            // const children = {
+            //   _isTemplateNode: true,
+            //   components: node.components,
+            //   templateChildren,
+            //   parsedHtmlFragments:
+            //     phrase.parsedHtmlFragments.map(prefixPhrases),
 
-              // DEV: not sure how you're going to populate these
-              // - you're going to have to do something like you do for
-              //   templateChildren
+            //   // DEV: not sure how you're going to populate these
+            //   // - you're going to have to do something like you do for
+            //   //   templateChildren
 
-              // DEV: hmm
-              identifiers: [],
-              // DEV: can you handle components here or do you need separate
-              // array for those?
-              slots: [],
-              attributes: [],
-              listeners: [],
+            //   // DEV: hmm
+            //   identifiers: [],
+            //   // DEV: can you handle components here or do you need separate
+            //   // array for those?
+            //   slots: [],
+            //   attributes: [],
+            //   listeners: [],
+            // };
+
+            propsByKey[childKey] = {
+              ...propsByKey[childKey],
+              children: { ...children, components: node.components },
             };
-
-            propsByKey[childKey] = { ...propsByKey[childKey], children };
           }
 
           renderToString(childKey, node.components[phrase.tagName], result);
