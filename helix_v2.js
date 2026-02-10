@@ -79,7 +79,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 //   within a template
 //     - this will allow the render function to easily compare children across
 //       renders
-// - [ ] fix prefisPhrases
+// - [ ] fix prefixPhrases
 // - [ ] you should get rid of some of the indirection: the template children
 //   array should be referenced by the attributes, listerners, etc. arrays, and
 //   these should be referenced by phrases
@@ -552,71 +552,30 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
             const templateChildren = [];
 
-            // DEV: hmm, doesn't really make sense for this to be a ternary
-            // - also, pretty sure just making a shallow copy of the
-            //   templateChildren array would be easier and have the same effect
-            // phrase.parsedHtmlFragments.forEach((fragment) => {
-            //   "templateChildIndex" in fragment
-            //     ? (templateChildren[fragment.templateChildIndex] =
-            //         template.templateChildren[fragment.templateChildIndex])
-            //     : null;
-            // });
-
-            // DEV: you'll need to go through the parent attributes, slots and
-            // listeners and add them to the child template
-            // - actually, seems like this should be part of the parsing logic
-
-            // DEV: props and attrs for the component itself are under keys on
-            // the phrase for the component
-
-            // DEV: don't think there's a way around the mutation. You'll need
-            // to use structuredClone or similar
-
-            // DEV: you need to fix prefixPhrases
-
-            // DEV: how does this work with the cache?
-            // - you'll need to get rid of the mutation to allow caching
-            // - that will be slightly trickier than you though at first
-            // - pretty sure it wasn't obviously breaking the cache because all
-            //   the relevant identifiers had the same prefix
-            const prefixPhrases = ({ ...phrase }) => {
-              // DEV: is the spread enough to keep from mutating the cache?
-              if (phrase.type === phraseTypes.IDENTIFIER) {
-                phrase.prefix = phrase.prefix || key;
-              } else if (phrase.type === phraseTypes.COMPONENT) {
-                phrase.parsedHtmlFragments =
-                  phrase.parsedHtmlFragments.map(prefixPhrases);
-              }
-
-              return phrase;
+            // DEV: to get the cache to work, you'll need to keep this from
+            // mutating templates
+            // - actually, part of the answer might just be to prefix
+            //   identifiers in the identifiers array?
+            const prefixIdentifiers = (template) => {
+              template.parsedHtmlFragments.forEach((phrase) => {
+                if (phrase.type === phraseTypes.IDENTIFIER) {
+                  phrase.prefix = phrase.prefix || key;
+                } else if (phrase.type === phraseTypes.COMPONENT) {
+                  prefixIdentifiers(template.children[phrase.childrenIndex]);
+                }
+              });
+              return template;
             };
 
             // DEV: don't forget about the hash
-
-            // DEV: you'll have to do this in the render fn as well
-            // const children = {
-            //   _isTemplateNode: true,
-            //   components: node.components,
-            //   templateChildren,
-            //   parsedHtmlFragments:
-            //     phrase.parsedHtmlFragments.map(prefixPhrases),
-
-            //   // DEV: not sure how you're going to populate these
-            //   // - you're going to have to do something like you do for
-            //   //   templateChildren
-
-            //   // DEV: hmm
-            //   identifiers: [],
-            //   // DEV: can you handle components here or do you need separate
-            //   // array for those?
-            //   slots: [],
-            //   attributes: [],
-            //   listeners: [],
-            // };
+            // DEV: you'll have to do this in the render fn as well?
 
             propsByKey[childKey] = {
               ...propsByKey[childKey],
-              children: { ...children, components: node.components },
+              children: prefixIdentifiers({
+                ...children,
+                components: node.components,
+              }),
             };
           }
 
@@ -751,6 +710,11 @@ const Component = () => {
   //   </button>
   // `;
 
+  // DEV: not sure that slots are indexed quite right
+  // - also, you need to properly pass components to slots
+  //   - should this happen during parsing?
+  //   - not quite sure how to determine where we should look for components for
+  //     a particular slot
   return html`
     hi there
     <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
