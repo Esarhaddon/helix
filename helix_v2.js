@@ -79,7 +79,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 //   within a template
 //     - this will allow the render function to easily compare children across
 //       renders
-// - [ ] fix prefixPhrases
+// - [x] fix prefixPhrases
 // - [ ] you should get rid of some of the indirection: the template children
 //   array should be referenced by the attributes, listerners, etc. arrays, and
 //   these should be referenced by phrases
@@ -305,6 +305,7 @@ function parseTemplateInPlace(template) {
               templateChildren: levelsStack.at(-1).parent.templateChildren,
               parsedHtmlFragments: [],
               children: [],
+              identifiers: [],
               attributes: [],
               listeners: [],
               slots: [],
@@ -550,13 +551,16 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           if ("childrenIndex" in phrase) {
             const children = template.children[phrase.childrenIndex];
 
-            const templateChildren = [];
-
             // DEV: to get the cache to work, you'll need to keep this from
             // mutating templates
             // - actually, part of the answer might just be to prefix
             //   identifiers in the identifiers array?
             const prefixIdentifiers = (template) => {
+              template.identifiers.forEach((identifier) => {
+                identifier.prefix = identifier.prefix || key;
+              });
+              // DEV: will be able to drop this once we're only looking at the
+              // identifiers array for suffixes
               template.parsedHtmlFragments.forEach((phrase) => {
                 if (phrase.type === phraseTypes.IDENTIFIER) {
                   phrase.prefix = phrase.prefix || key;
