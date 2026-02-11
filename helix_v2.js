@@ -83,6 +83,12 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 // - [ ] you should get rid of some of the indirection: the template children
 //   array should be referenced by the attributes, listerners, etc. arrays, and
 //   these should be referenced by phrases
+//     - [x] identifiers
+//     - [ ] slots
+//     - [ ] attributes
+//     - [ ] children
+//     - [ ] listeners
+// - [ ] Fix the indirection around levelsStack.at(-1).parent
 
 // TODO: pretty sure it would make sense to call toString on functions before
 // comparing them when deciding to re-render
@@ -131,13 +137,6 @@ function parseTemplateInPlace(template) {
   // DEV: would be good to get rid of some of this indirection
   const levelsStack = [{ phrases: result, parent: template }];
 
-  function prevSuffix() {
-    return levelsStack
-      .at(-1)
-      .phrases.findLast((phrase) => phrase.type === phraseTypes.IDENTIFIER)
-      .suffix;
-  }
-
   function prevPhrase() {
     return levelsStack.at(-1).phrases.at(-1);
   }
@@ -149,7 +148,10 @@ function parseTemplateInPlace(template) {
   template.htmlFragments.forEach((fragment, i) => {
     // Add a closing identifier for slots
     if (!isOpeningTag && !isClosingTag && i !== 0) {
-      pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: prevSuffix() });
+      pushPhrase({
+        type: phraseTypes.IDENTIFIER,
+        index: levelsStack.at(-1).parent.identifiers.length - 1,
+      });
     }
 
     let unparsedFragment = fragment;
@@ -196,7 +198,11 @@ function parseTemplateInPlace(template) {
 
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
             isComponentTag = true;
-            pushPhrase({ type: phraseTypes.IDENTIFIER, suffix });
+            levelsStack.at(-1).parent.identifiers.push({ suffix });
+            pushPhrase({
+              type: phraseTypes.IDENTIFIER,
+              index: levelsStack.at(-1).parent.identifiers.length - 1,
+            });
             suffix++;
           }
 
@@ -327,7 +333,10 @@ function parseTemplateInPlace(template) {
             isClosingTag ||
             unparsedFragment[controlCharsIndex - 1] === "/"
           ) {
-            pushPhrase({ type: phraseTypes.IDENTIFIER, suffix: prevSuffix() });
+            pushPhrase({
+              type: phraseTypes.IDENTIFIER,
+              index: levelsStack.at(-1).parent.identifiers.length - 1,
+            });
           }
 
           isClosingTag = false;
@@ -367,13 +376,11 @@ function parseTemplateInPlace(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
-      // DEV: might be a good idea to just have suffixes live in the top level
-      // identifiers array
-
-      // DEV: you need a way to associate identifiers with slots, listeners, and
-      // attributes stored at the top level
-      pushPhrase({ type: phraseTypes.IDENTIFIER, suffix });
-      template.identifiers.push({ suffix });
+      levelsStack.at(-1).parent.identifiers.push({ suffix });
+      pushPhrase({
+        type: phraseTypes.IDENTIFIER,
+        index: levelsStack.at(-1).parent.identifiers.length - 1,
+      });
       suffix++;
 
       // DEV: here and elsewhere, you shouldn't push directly on to the top
@@ -400,12 +407,12 @@ function parseTemplateInPlace(template) {
         !phrases[start - 1] ||
         phrases[start - 1].type !== phraseTypes.IDENTIFIER
       ) {
+        levelsStack.at(-1).parent.identifiers.push({ suffix });
+        suffix++;
         phrases.splice(start, 0, {
           type: phraseTypes.IDENTIFIER,
-          suffix,
+          index: levelsStack.at(-1).parent.identifiers.length - 1,
         });
-        template.identifiers.push({ suffix });
-        suffix++;
       }
 
       const attrStart =
@@ -449,6 +456,7 @@ function parseTemplateInPlace(template) {
 }
 
 // DEV: you'll need to share this with the render fn
+// - actually, you don't need this?
 let currentInstanceStack = [];
 let propsByKey = {};
 
@@ -469,19 +477,20 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
   console.log(JSON.stringify(template, null, 2));
 
   template.parsedHtmlFragments.forEach((phrase, i) => {
+    const prevPhrase = template.parsedHtmlFragments[i - 1];
     const childKey =
-      template.parsedHtmlFragments[i - 1]?.type === phraseTypes.IDENTIFIER &&
+      prevPhrase?.type === phraseTypes.IDENTIFIER &&
       `${
-        // DEV: here and elsewhere you could just add the suffix to the template
-        template.parsedHtmlFragments[i - 1].prefix ||
+        template.identifiers[prevPhrase.index].prefix ||
         currentInstanceStack.at(-1).key
-      } ${template.parsedHtmlFragments[i - 1].suffix.toString(32)}`;
+      } ${template.identifiers[prevPhrase.index].suffix.toString(32)}`;
 
     switch (phrase.type) {
       case phraseTypes.IDENTIFIER:
         const identifier = [
-          phrase.prefix || currentInstanceStack.at(-1).key,
-          phrase.suffix.toString(32),
+          template.identifiers[phrase.index].prefix ||
+            currentInstanceStack.at(-1).key,
+          template.identifiers[phrase.index].suffix.toString(32),
         ].join(" ");
 
         // DEV: this might be the most convenient place right now to associate
@@ -559,15 +568,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
               template.identifiers.forEach((identifier) => {
                 identifier.prefix = identifier.prefix || key;
               });
-              // DEV: will be able to drop this once we're only looking at the
-              // identifiers array for suffixes
-              template.parsedHtmlFragments.forEach((phrase) => {
-                if (phrase.type === phraseTypes.IDENTIFIER) {
-                  phrase.prefix = phrase.prefix || key;
-                } else if (phrase.type === phraseTypes.COMPONENT) {
-                  prefixIdentifiers(template.children[phrase.childrenIndex]);
-                }
-              });
+              template.children.forEach(prefixIdentifiers);
               return template;
             };
 
