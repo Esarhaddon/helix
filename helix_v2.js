@@ -86,7 +86,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 //     - [x] identifiers
 //     - [x] slots
 //     - [x] attributes
-//     - [ ] children
+//     - [x] children
 //     - [ ] listeners
 // - [ ] Fix the indirection around levelsStack.at(-1).parent
 
@@ -199,7 +199,6 @@ function parseTemplateInPlace(template) {
 
           if (isComponentTag) {
             Object.assign(prevPhrase(), {
-              isComponentTag: true, // DEV: you should be able to get rid of this on the phrase
               type: phraseTypes.COMPONENT,
               tagName: unparsedFragment.slice(
                 controlCharsIndex + 1,
@@ -215,13 +214,6 @@ function parseTemplateInPlace(template) {
               isOpeningTag: true,
               value: "",
               childrenIndex: levelsStack.at(-1).parent.children.length - 1,
-              // DEV: should be able to drop these
-              parsedHtmlFragments: [],
-              // DEV: do you need an array for children?
-              // - you need a way to be able to compare children across renders
-              attributes: [],
-              listeners: [],
-              slots: [],
             });
           }
 
@@ -315,7 +307,7 @@ function parseTemplateInPlace(template) {
               // DEV: hmm
               parent: levelsStack.at(-1).parent.children.at(-1),
               phrases: levelsStack.at(-1).parent.children.at(-1)
-                .parsedHtmlFragments, // prevPhrase().parsedHtmlFragments,
+                .parsedHtmlFragments,
             });
           } else if (
             isClosingTag ||
@@ -343,7 +335,7 @@ function parseTemplateInPlace(template) {
         !unparsedFragment &&
         isComponentTag &&
         isOpeningTag &&
-        prevPhrase().isComponentTag
+        prevPhrase().type === phraseTypes.COMPONENT
       ) {
         if (fragment.endsWith(" ")) {
           prevPhrase().props ||= [];
@@ -365,21 +357,16 @@ function parseTemplateInPlace(template) {
       i !== template.htmlFragments.length - 1
     ) {
       levelsStack.at(-1).parent.identifiers.push({ suffix });
+      suffix++;
       pushPhrase({
         type: phraseTypes.IDENTIFIER,
         index: levelsStack.at(-1).parent.identifiers.length - 1,
       });
-      suffix++;
 
-      // DEV: here and elsewhere, you shouldn't push directly on to the top
-      // level template
-
-      // DEV: hmm, maybe all phrase details should live at the top level?
       levelsStack.at(-1).parent.slots.push({
         templateChildIndex: i,
         identifierIndex: getIdentifiers().length - 1,
       });
-
       pushPhrase({
         type: phraseTypes.SLOT,
         index: levelsStack.at(-1).parent.slots.length - 1,
@@ -541,9 +528,6 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           phrase.tagName in node.components &&
           typeof node.components[phrase.tagName] === "function"
         ) {
-          const children = template.children[phrase.childrenIndex];
-          console.log("the children", children);
-
           if ("childrenIndex" in phrase) {
             const children = template.children[phrase.childrenIndex];
 
@@ -559,9 +543,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
               return template;
             };
 
-            // DEV: don't forget about the hash
             // DEV: you'll have to do this in the render fn as well?
-
             propsByKey[childKey] = {
               ...propsByKey[childKey],
               children: prefixIdentifiers({
