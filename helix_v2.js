@@ -84,7 +84,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 //   array should be referenced by the attributes, listerners, etc. arrays, and
 //   these should be referenced by phrases
 //     - [x] identifiers
-//     - [ ] slots
+//     - [x] slots
 //     - [ ] attributes
 //     - [ ] children
 //     - [ ] listeners
@@ -108,28 +108,12 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 // - This might be a little bit at odds with the format that renderToString
 //   needs the template to be in
 
-// DEV: this doesn't seem to be working quite like you expected
-// - things on the same level weren't getting cached?
-// - that would explain why you didn't see any speed ups in arrays with many
-//   elements when caching vs not
-// - actually, it was mostly working correctly?
-const cache = {};
-
 function parseTemplateInPlace(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
   let isComponentTag = false;
   let isAttr = false;
 
-  // const result = cache[template.hash] || [];
-  // template.parsedHtmlFragments = result;
-
-  // if (result.length) {
-  //   console.log("cache hit for", template.hash);
-  //   return;
-  // }
-
-  // DEV: drop the cache for now
   const result = [];
   template.parsedHtmlFragments = result;
 
@@ -145,12 +129,16 @@ function parseTemplateInPlace(template) {
     levelsStack.at(-1).phrases.push(phrase);
   }
 
+  function getIdentifiers() {
+    return levelsStack.at(-1).parent.identifiers;
+  }
+
   template.htmlFragments.forEach((fragment, i) => {
     // Add a closing identifier for slots
     if (!isOpeningTag && !isClosingTag && i !== 0) {
       pushPhrase({
         type: phraseTypes.IDENTIFIER,
-        index: levelsStack.at(-1).parent.identifiers.length - 1,
+        index: getIdentifiers().length - 1,
       });
     }
 
@@ -389,12 +377,12 @@ function parseTemplateInPlace(template) {
       // DEV: hmm, maybe all phrase details should live at the top level?
       levelsStack.at(-1).parent.slots.push({
         templateChildIndex: i,
-        identifierIndex: template.identifiers.length - 1,
+        identifierIndex: getIdentifiers().length - 1,
       });
 
       pushPhrase({
         type: phraseTypes.SLOT,
-        templateChildIndex: i,
+        index: levelsStack.at(-1).parent.slots.length - 1,
         type: "slot",
       });
     } else if (isOpeningTag && !isComponentTag) {
@@ -407,11 +395,11 @@ function parseTemplateInPlace(template) {
         !phrases[start - 1] ||
         phrases[start - 1].type !== phraseTypes.IDENTIFIER
       ) {
-        levelsStack.at(-1).parent.identifiers.push({ suffix });
+        getIdentifiers().push({ suffix });
         suffix++;
         phrases.splice(start, 0, {
           type: phraseTypes.IDENTIFIER,
-          index: levelsStack.at(-1).parent.identifiers.length - 1,
+          index: getIdentifiers().length - 1,
         });
       }
 
@@ -423,24 +411,20 @@ function parseTemplateInPlace(template) {
 
       if (attrName.startsWith("on")) {
         // Strip out inline event listeners so they can be attached later
-
         prevPhrase().value = prevPhrase()
           .value.split("")
           .toSpliced(attrStart, attrName.length + 1)
           .join("");
 
-        // DEV: seems like you could dry this up a bit
-
         levelsStack.at(-1).parent.listeners.push({
           templateChildIndex: i,
           event: attrName.slice(2).toLowerCase(),
-          identifierIndex: template.identifiers.length - 1,
+          identifierIndex: getIdentifiers().length - 1,
         });
       } else {
-        // DEV: this seems a bit confused
         levelsStack.at(-1).parent.attributes.push({
           templateChildIndex: i,
-          identifierIndex: template.identifiers.length - 1,
+          identifierIndex: getIdentifiers().length - 1,
         });
         pushPhrase({
           type: phraseTypes.ATTRIBUTE,
@@ -452,7 +436,6 @@ function parseTemplateInPlace(template) {
   });
 
   template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
-  cache[template.hash] = template.parsedHtmlFragments;
 }
 
 // DEV: you'll need to share this with the render fn
@@ -516,7 +499,9 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
         break;
       case phraseTypes.SLOT:
         const templateChild =
-          template.templateChildren[phrase.templateChildIndex];
+          template.templateChildren[
+            template.slots[phrase.index].templateChildIndex
+          ];
         const value =
           typeof templateChild === "function" ? templateChild() : templateChild;
 
