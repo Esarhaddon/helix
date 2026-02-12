@@ -85,7 +85,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 //   these should be referenced by phrases
 //     - [x] identifiers
 //     - [x] slots
-//     - [ ] attributes
+//     - [x] attributes
 //     - [ ] children
 //     - [ ] listeners
 // - [ ] Fix the indirection around levelsStack.at(-1).parent
@@ -428,7 +428,7 @@ function parseTemplateInPlace(template) {
         });
         pushPhrase({
           type: phraseTypes.ATTRIBUTE,
-          templateChildIndex: i,
+          index: levelsStack.at(-1).parent.attributes.length - 1,
           type: "attribute",
         });
       }
@@ -494,7 +494,9 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
       case phraseTypes.ATTRIBUTE:
         result.html += `"${
           // TODO: you may need to escape this
-          template.templateChildren[phrase.templateChildIndex]
+          template.templateChildren[
+            template.attributes[phrase.index].templateChildIndex
+          ]
         }"`;
         break;
       case phraseTypes.SLOT:
