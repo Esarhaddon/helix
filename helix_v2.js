@@ -87,7 +87,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 //     - [x] slots
 //     - [x] attributes
 //     - [x] children
-//     - [ ] listeners
+//     - [x] listeners
 // - [ ] Fix the indirection around levelsStack.at(-1).parent
 
 // TODO: pretty sure it would make sense to call toString on functions before
@@ -463,16 +463,6 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           template.identifiers[phrase.index].suffix.toString(32),
         ].join(" ");
 
-        // DEV: this might be the most convenient place right now to associate
-        // slots, attributes, and listeners with identifiers?
-
-        // DEV: this is where you need to do the replacement
-        // - actually, you don't need this?
-        if (Array.isArray(phrase.listeners)) {
-          result.listeners[identifier] ||= [];
-          result.listeners[identifier].push(...phrase.listeners);
-        }
-
         result.html += `<!-- ${identifier} -->`;
         break;
       case phraseTypes.HTML:
@@ -744,5 +734,3 @@ const result = renderToString("root", Component);
 const root = document.getElementById("root");
 
 root.innerHTML = result.html;
-
-console.log("all listeners:", result.listeners);
