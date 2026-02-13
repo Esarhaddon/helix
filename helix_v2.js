@@ -80,7 +80,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 //     - this will allow the render function to easily compare children across
 //       renders
 // - [x] fix prefixPhrases
-// - [ ] you should get rid of some of the indirection: the template children
+// - [x] you should get rid of some of the indirection: the template children
 //   array should be referenced by the attributes, listerners, etc. arrays, and
 //   these should be referenced by phrases
 //     - [x] identifiers
@@ -118,7 +118,7 @@ function parseTemplateInPlace(template) {
   template.parsedHtmlFragments = result;
 
   let suffix = 0;
-  // DEV: would be good to get rid of some of this indirection
+  // DEV: this should just be a stack of templates
   const levelsStack = [{ phrases: result, parent: template }];
 
   function prevPhrase() {
@@ -263,7 +263,6 @@ function parseTemplateInPlace(template) {
             ),
           });
 
-          // DEV: pretty sure this is the spot to build children
           if (isComponentTag) {
             levelsStack.at(-1).parent.parsedHtmlFragments = mergePhrases(
               levelsStack.at(-1).phrases,
