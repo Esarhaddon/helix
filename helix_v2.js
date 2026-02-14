@@ -88,7 +88,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
 //     - [x] attributes
 //     - [x] children
 //     - [x] listeners
-// - [ ] Fix the indirection around levelsStack.at(-1).parent
+// - [x] Fix the indirection around levelsStack.at(-1).parent
 
 // TODO: pretty sure it would make sense to call toString on functions before
 // comparing them when deciding to re-render
@@ -119,18 +119,19 @@ function parseTemplateInPlace(template) {
 
   let suffix = 0;
   // DEV: this should just be a stack of templates
-  const levelsStack = [{ phrases: result, parent: template }];
+  const levelsStack = [template];
 
   function prevPhrase() {
-    return levelsStack.at(-1).phrases.at(-1);
+    return levelsStack.at(-1).parsedHtmlFragments.at(-1);
   }
 
   function pushPhrase(phrase) {
-    levelsStack.at(-1).phrases.push(phrase);
+    levelsStack.at(-1).parsedHtmlFragments.push(phrase);
   }
 
+  // DEV: probably just need a getTemplate fn
   function getIdentifiers() {
-    return levelsStack.at(-1).parent.identifiers;
+    return levelsStack.at(-1).identifiers;
   }
 
   template.htmlFragments.forEach((fragment, i) => {
@@ -186,10 +187,10 @@ function parseTemplateInPlace(template) {
 
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
             isComponentTag = true;
-            levelsStack.at(-1).parent.identifiers.push({ suffix });
+            levelsStack.at(-1).identifiers.push({ suffix });
             pushPhrase({
               type: phraseTypes.IDENTIFIER,
-              index: levelsStack.at(-1).parent.identifiers.length - 1,
+              index: levelsStack.at(-1).identifiers.length - 1,
             });
             suffix++;
           }
@@ -213,7 +214,7 @@ function parseTemplateInPlace(template) {
               ),
               isOpeningTag: true,
               value: "",
-              childrenIndex: levelsStack.at(-1).parent.children.length - 1,
+              childrenIndex: levelsStack.at(-1).children.length - 1,
             });
           }
 
@@ -264,8 +265,8 @@ function parseTemplateInPlace(template) {
           });
 
           if (isComponentTag) {
-            levelsStack.at(-1).parent.parsedHtmlFragments = mergePhrases(
-              levelsStack.at(-1).phrases,
+            levelsStack.at(-1).parsedHtmlFragments = mergePhrases(
+              levelsStack.at(-1).parsedHtmlFragments,
             );
             levelsStack.pop();
           }
@@ -285,9 +286,9 @@ function parseTemplateInPlace(template) {
           ) {
             // DEV: you're going to need to compute the hash later
             // - also, should be able to get rid of the .parent indirection
-            levelsStack.at(-1).parent.children.push({
+            levelsStack.at(-1).children.push({
               _isTemplateNode: true,
-              templateChildren: levelsStack.at(-1).parent.templateChildren,
+              templateChildren: levelsStack.at(-1).templateChildren,
               parsedHtmlFragments: [],
               children: [],
               identifiers: [],
@@ -296,25 +297,23 @@ function parseTemplateInPlace(template) {
               slots: [],
             });
 
-            prevPhrase().childrenIndex =
-              levelsStack.at(-1).parent.children.length - 1;
+            prevPhrase().childrenIndex = levelsStack.at(-1).children.length - 1;
 
-            levelsStack.push({
+            levelsStack.push(
               // DEV: not sure parent is the right name
               // - maybe just push the phrase to the stack directly?
               // parent: prevPhrase(),
               // DEV: hmm
-              parent: levelsStack.at(-1).parent.children.at(-1),
-              phrases: levelsStack.at(-1).parent.children.at(-1)
-                .parsedHtmlFragments,
-            });
+              levelsStack.at(-1).children.at(-1),
+              // phrases: levelsStack.at(-1).children.at(-1).parsedHtmlFragments,
+            );
           } else if (
             isClosingTag ||
             unparsedFragment[controlCharsIndex - 1] === "/"
           ) {
             pushPhrase({
               type: phraseTypes.IDENTIFIER,
-              index: levelsStack.at(-1).parent.identifiers.length - 1,
+              index: levelsStack.at(-1).identifiers.length - 1,
             });
           }
 
@@ -355,26 +354,27 @@ function parseTemplateInPlace(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
-      levelsStack.at(-1).parent.identifiers.push({ suffix });
+      levelsStack.at(-1).identifiers.push({ suffix });
       suffix++;
       pushPhrase({
         type: phraseTypes.IDENTIFIER,
-        index: levelsStack.at(-1).parent.identifiers.length - 1,
+        index: levelsStack.at(-1).identifiers.length - 1,
       });
 
-      levelsStack.at(-1).parent.slots.push({
+      levelsStack.at(-1).slots.push({
         templateChildIndex: i,
         identifierIndex: getIdentifiers().length - 1,
       });
       pushPhrase({
         type: phraseTypes.SLOT,
-        index: levelsStack.at(-1).parent.slots.length - 1,
+        index: levelsStack.at(-1).slots.length - 1,
         type: "slot",
       });
     } else if (isOpeningTag && !isComponentTag) {
       // TODO: this would also be the place to handle passing objects
 
-      const phrases = levelsStack.at(-1).phrases;
+      const phrases = levelsStack.at(-1).parsedHtmlFragments;
+      // DEV: naming?
       const start = phrases.findLastIndex((phrase) => phrase.tagStart);
 
       if (
@@ -402,19 +402,19 @@ function parseTemplateInPlace(template) {
           .toSpliced(attrStart, attrName.length + 1)
           .join("");
 
-        levelsStack.at(-1).parent.listeners.push({
+        levelsStack.at(-1).listeners.push({
           templateChildIndex: i,
           event: attrName.slice(2).toLowerCase(),
           identifierIndex: getIdentifiers().length - 1,
         });
       } else {
-        levelsStack.at(-1).parent.attributes.push({
+        levelsStack.at(-1).attributes.push({
           templateChildIndex: i,
           identifierIndex: getIdentifiers().length - 1,
         });
         pushPhrase({
           type: phraseTypes.ATTRIBUTE,
-          index: levelsStack.at(-1).parent.attributes.length - 1,
+          index: levelsStack.at(-1).attributes.length - 1,
           type: "attribute",
         });
       }
