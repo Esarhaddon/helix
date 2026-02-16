@@ -73,23 +73,6 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
   };
 }
 
-// DEV: THE PLAN
-// - [x] populate a children array on each template (like attributes, listeners,
-//   etc.). Keep in mind the distinction between templates and components used
-//   within a template
-//     - this will allow the render function to easily compare children across
-//       renders
-// - [x] fix prefixPhrases
-// - [x] you should get rid of some of the indirection: the template children
-//   array should be referenced by the attributes, listerners, etc. arrays, and
-//   these should be referenced by phrases
-//     - [x] identifiers
-//     - [x] slots
-//     - [x] attributes
-//     - [x] children
-//     - [x] listeners
-// - [x] Fix the indirection around levelsStack.at(-1).parent
-
 // TODO: pretty sure it would make sense to call toString on functions before
 // comparing them when deciding to re-render
 // - they latest function would still be used in the props object, but if
@@ -118,20 +101,20 @@ function parseTemplateInPlace(template) {
   template.parsedHtmlFragments = result;
 
   let suffix = 0;
-  // DEV: this should just be a stack of templates
-  const levelsStack = [template];
+  const templateStack = [template];
 
   function prevPhrase() {
-    return levelsStack.at(-1).parsedHtmlFragments.at(-1);
+    return templateStack.at(-1).parsedHtmlFragments.at(-1);
   }
 
   function pushPhrase(phrase) {
-    levelsStack.at(-1).parsedHtmlFragments.push(phrase);
+    templateStack.at(-1).parsedHtmlFragments.push(phrase);
   }
 
   // DEV: probably just need a getTemplate fn
+  // - or just drop this?
   function getIdentifiers() {
-    return levelsStack.at(-1).identifiers;
+    return templateStack.at(-1).identifiers;
   }
 
   template.htmlFragments.forEach((fragment, i) => {
@@ -155,7 +138,7 @@ function parseTemplateInPlace(template) {
           // Attribute start or end
           (isOpeningTag && char === '"') ||
           // Closing tag start (only matters for component tags)
-          (levelsStack.length > 1 &&
+          (templateStack.length > 1 &&
             !isOpeningTag &&
             !isAttr &&
             char === "<" &&
@@ -187,10 +170,10 @@ function parseTemplateInPlace(template) {
 
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
             isComponentTag = true;
-            levelsStack.at(-1).identifiers.push({ suffix });
+            templateStack.at(-1).identifiers.push({ suffix });
             pushPhrase({
               type: phraseTypes.IDENTIFIER,
-              index: levelsStack.at(-1).identifiers.length - 1,
+              index: templateStack.at(-1).identifiers.length - 1,
             });
             suffix++;
           }
@@ -214,7 +197,7 @@ function parseTemplateInPlace(template) {
               ),
               isOpeningTag: true,
               value: "",
-              childrenIndex: levelsStack.at(-1).children.length - 1,
+              childrenIndex: templateStack.at(-1).children.length - 1,
             });
           }
 
@@ -265,10 +248,10 @@ function parseTemplateInPlace(template) {
           });
 
           if (isComponentTag) {
-            levelsStack.at(-1).parsedHtmlFragments = mergePhrases(
-              levelsStack.at(-1).parsedHtmlFragments,
+            templateStack.at(-1).parsedHtmlFragments = mergePhrases(
+              templateStack.at(-1).parsedHtmlFragments,
             );
-            levelsStack.pop();
+            templateStack.pop();
           }
 
           isClosingTag = true;
@@ -286,9 +269,9 @@ function parseTemplateInPlace(template) {
           ) {
             // DEV: you're going to need to compute the hash later
             // - also, should be able to get rid of the .parent indirection
-            levelsStack.at(-1).children.push({
+            templateStack.at(-1).children.push({
               _isTemplateNode: true,
-              templateChildren: levelsStack.at(-1).templateChildren,
+              templateChildren: templateStack.at(-1).templateChildren,
               parsedHtmlFragments: [],
               children: [],
               identifiers: [],
@@ -297,14 +280,15 @@ function parseTemplateInPlace(template) {
               slots: [],
             });
 
-            prevPhrase().childrenIndex = levelsStack.at(-1).children.length - 1;
+            prevPhrase().childrenIndex =
+              templateStack.at(-1).children.length - 1;
 
-            levelsStack.push(
+            templateStack.push(
               // DEV: not sure parent is the right name
               // - maybe just push the phrase to the stack directly?
               // parent: prevPhrase(),
               // DEV: hmm
-              levelsStack.at(-1).children.at(-1),
+              templateStack.at(-1).children.at(-1),
               // phrases: levelsStack.at(-1).children.at(-1).parsedHtmlFragments,
             );
           } else if (
@@ -313,7 +297,7 @@ function parseTemplateInPlace(template) {
           ) {
             pushPhrase({
               type: phraseTypes.IDENTIFIER,
-              index: levelsStack.at(-1).identifiers.length - 1,
+              index: templateStack.at(-1).identifiers.length - 1,
             });
           }
 
@@ -354,26 +338,26 @@ function parseTemplateInPlace(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
-      levelsStack.at(-1).identifiers.push({ suffix });
+      templateStack.at(-1).identifiers.push({ suffix });
       suffix++;
       pushPhrase({
         type: phraseTypes.IDENTIFIER,
-        index: levelsStack.at(-1).identifiers.length - 1,
+        index: templateStack.at(-1).identifiers.length - 1,
       });
 
-      levelsStack.at(-1).slots.push({
+      templateStack.at(-1).slots.push({
         templateChildIndex: i,
         identifierIndex: getIdentifiers().length - 1,
       });
       pushPhrase({
         type: phraseTypes.SLOT,
-        index: levelsStack.at(-1).slots.length - 1,
+        index: templateStack.at(-1).slots.length - 1,
         type: "slot",
       });
     } else if (isOpeningTag && !isComponentTag) {
       // TODO: this would also be the place to handle passing objects
 
-      const phrases = levelsStack.at(-1).parsedHtmlFragments;
+      const phrases = templateStack.at(-1).parsedHtmlFragments;
       // DEV: naming?
       const start = phrases.findLastIndex((phrase) => phrase.tagStart);
 
@@ -402,19 +386,19 @@ function parseTemplateInPlace(template) {
           .toSpliced(attrStart, attrName.length + 1)
           .join("");
 
-        levelsStack.at(-1).listeners.push({
+        templateStack.at(-1).listeners.push({
           templateChildIndex: i,
           event: attrName.slice(2).toLowerCase(),
           identifierIndex: getIdentifiers().length - 1,
         });
       } else {
-        levelsStack.at(-1).attributes.push({
+        templateStack.at(-1).attributes.push({
           templateChildIndex: i,
           identifierIndex: getIdentifiers().length - 1,
         });
         pushPhrase({
           type: phraseTypes.ATTRIBUTE,
-          index: levelsStack.at(-1).attributes.length - 1,
+          index: templateStack.at(-1).attributes.length - 1,
           type: "attribute",
         });
       }
