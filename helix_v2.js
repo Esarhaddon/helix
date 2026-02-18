@@ -283,14 +283,7 @@ function parseTemplateInPlace(template) {
             prevPhrase().childrenIndex =
               templateStack.at(-1).children.length - 1;
 
-            templateStack.push(
-              // DEV: not sure parent is the right name
-              // - maybe just push the phrase to the stack directly?
-              // parent: prevPhrase(),
-              // DEV: hmm
-              templateStack.at(-1).children.at(-1),
-              // phrases: levelsStack.at(-1).children.at(-1).parsedHtmlFragments,
-            );
+            templateStack.push(templateStack.at(-1).children.at(-1));
           } else if (
             isClosingTag ||
             unparsedFragment[controlCharsIndex - 1] === "/"
@@ -355,19 +348,16 @@ function parseTemplateInPlace(template) {
         type: "slot",
       });
     } else if (isOpeningTag && !isComponentTag) {
-      // TODO: this would also be the place to handle passing objects
-
       const phrases = templateStack.at(-1).parsedHtmlFragments;
-      // DEV: naming?
-      const start = phrases.findLastIndex((phrase) => phrase.tagStart);
+      const tagStart = phrases.findLastIndex((phrase) => phrase.tagStart);
 
       if (
-        !phrases[start - 1] ||
-        phrases[start - 1].type !== phraseTypes.IDENTIFIER
+        !phrases[tagStart - 1] ||
+        phrases[tagStart - 1].type !== phraseTypes.IDENTIFIER
       ) {
         getIdentifiers().push({ suffix });
         suffix++;
-        phrases.splice(start, 0, {
+        phrases.splice(tagStart, 0, {
           type: phraseTypes.IDENTIFIER,
           index: getIdentifiers().length - 1,
         });
