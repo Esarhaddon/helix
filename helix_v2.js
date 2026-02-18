@@ -63,7 +63,6 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
       htmlFragments,
       // DEV: this should be called something else
       templateChildren: children.length ? children : defaultChildren,
-      // DEV: hmm
       identifiers: [],
       slots: [],
       attributes: [],
@@ -73,23 +72,10 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
   };
 }
 
-// TODO: pretty sure it would make sense to call toString on functions before
-// comparing them when deciding to re-render
-// - they latest function would still be used in the props object, but if
-//   f1.toString() === f2.toString() you wouldn't re-render the component
-// - there are probably still some edge cases where this would lead to stale
-//   values, but do they matter?
-
 // TODO: one layer of indirection between the actual event listeners and the
 // interpolated functions would allow listeners to be attached before all the JS
 // had loaded
 // - what about serializing event listeners in the dom?
-
-// DEV: next step is to make sure that attributes, events, and slots all end up
-// in the parsed template such that it's simple for the render fn to compare
-// them across renders.
-// - This might be a little bit at odds with the format that renderToString
-//   needs the template to be in
 
 function parseTemplateInPlace(template) {
   let isOpeningTag = false;
@@ -111,8 +97,6 @@ function parseTemplateInPlace(template) {
     templateStack.at(-1).parsedHtmlFragments.push(phrase);
   }
 
-  // DEV: probably just need a getTemplate fn
-  // - or just drop this?
   function getIdentifiers() {
     return templateStack.at(-1).identifiers;
   }
@@ -511,20 +495,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
 const nodes = {};
 
-// DEV: what is the relationship between slots and components?
-// - things like signals and hooks will need to be keyed by component
-//   identifiers
-// - slot identifiers only matter for making updates to the dom and checking
-//   whether or not the slot template has changed?
-
-// DEV: render should only be called on component nodes?
-// - slots as well?
-function render(
-  node,
-  // should be safe to assume when rendering that key will always mark the start
-  // and end of a slot or component
-  key,
-) {
+function render(node, key) {
   let template;
 
   if (node._isTemplateNode) {
@@ -532,7 +503,7 @@ function render(
   } else if (typeof node === "function") {
     template = node(propsByKey[key] || {});
   } else {
-    throw new Error("Encountered malforned node", { cause: node });
+    throw new Error("[render] Encountered invalid node", { cause: node });
   }
 
   if (!template.parsedHtmlFragments) {
@@ -670,8 +641,6 @@ Component.components = { ArrayTest, Button, WithChildren };
 
 const result = renderToString("root", Component);
 
-// console.log(result);
-
 // DEV: hash all user-provided keys?
 
 // DEV: hmm, looks like you're giving components extra keys?
@@ -689,29 +658,3 @@ const result = renderToString("root", Component);
 const root = document.getElementById("root");
 
 root.innerHTML = result.html;
-
-/*
-
-hi there
-    <!-- root 0 --><div id="attr-value">attr test</div>
-    <!-- root 1 --><br>
-    children:
-    <!-- root 1 0 --><div><!-- root 1 1 -->
-      <!-- root 2 --><span>
-        this is a slot <!-- root 2 0 --><div>and this is a nested slot</div><!-- root 2 0 -->
-      </span><!-- root 2 -->
-      hello world
-      <!-- root 3 --><div class="my-div">how about here</div>
-      <!-- root 4 --><br>
-    children:
-    <!-- root 4 0 --><div><!-- root 4 1 -->
-        hello again
-        <!-- root 5 --><br>
-    children:
-    <!-- root 5 0 --><div><!-- root 5 1 -->it's working!<!-- root 5 1 --></div><!-- root 5 -->
-      <!-- root 4 1 --></div><!-- root 4 -->
-    <!-- root 1 1 --></div><!-- root 1 -->
-    <!-- root 6 --><button>
-      <span>press me</span>
-    </button>
-    */
