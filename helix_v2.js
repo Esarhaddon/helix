@@ -398,20 +398,9 @@ function parseTemplateInPlace(template) {
   template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
 }
 
-// DEV: you'll need to share this with the render fn
-// - actually, you don't need this?
-let currentInstanceStack = [];
 let propsByKey = {};
 
-// DEV: some of this work will need to be done by the render fn?
-
 function renderToString(key, node, result = { html: "", listeners: {} }) {
-  // DEV: what is the relationship between this and what you're going to need to
-  // use for the render fn?
-  // - for the render function do you just need a single key?
-  currentInstanceStack.push({ key });
-
-  // DEV: you should be able to drop this
   const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
   if (!template.parsedHtmlFragments) {
     parseTemplateInPlace(template);
@@ -424,15 +413,13 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
     const childKey =
       prevPhrase?.type === phraseTypes.IDENTIFIER &&
       `${
-        template.identifiers[prevPhrase.index].prefix ||
-        currentInstanceStack.at(-1).key
+        template.identifiers[prevPhrase.index].prefix || key
       } ${template.identifiers[prevPhrase.index].suffix.toString(32)}`;
 
     switch (phrase.type) {
       case phraseTypes.IDENTIFIER:
         const identifier = [
-          template.identifiers[phrase.index].prefix ||
-            currentInstanceStack.at(-1).key,
+          template.identifiers[phrase.index].prefix || key,
           template.identifiers[phrase.index].suffix.toString(32),
         ].join(" ");
 
@@ -494,10 +481,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           if ("childrenIndex" in phrase) {
             const children = template.children[phrase.childrenIndex];
 
-            // DEV: to get the cache to work, you'll need to keep this from
-            // mutating templates
-            // - actually, part of the answer might just be to prefix
-            //   identifiers in the identifiers array?
+            // TODO: might be some extra work to make this work with a cache
             const prefixIdentifiers = (template) => {
               template.identifiers.forEach((identifier) => {
                 identifier.prefix = identifier.prefix || key;
@@ -506,7 +490,6 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
               return template;
             };
 
-            // DEV: you'll have to do this in the render fn as well?
             propsByKey[childKey] = {
               ...propsByKey[childKey],
               children: prefixIdentifiers({
@@ -523,7 +506,6 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
     }
   });
 
-  currentInstanceStack.pop();
   return result;
 }
 
