@@ -15,6 +15,20 @@ function isMergeable(phrase) {
   );
 }
 
+// DEV: children will need to be excluded from the cache sometimes?
+// - or the hash calculation will just be a little tricky?
+// - everytime you push a phrase, you should also add to a shared hash?
+// - don't think you're thinking about this quite right
+// - actaully, I think you can calculate the hash when you merge phrases?
+
+// DEV: keys need to be based on where things end up in the dom
+// - your idea that keys should be based on where children were defined was
+//   wrong. In order for rendering to be consistent the key associated with a
+//   slot can't change, and therefore has to be determined by it's position
+
+// DEV: keys are still not working quite right
+// - identifiers
+
 // TODO: There's probably a performance cost to not doing this on the fly
 function mergePhrases(phrases) {
   return phrases.reduce((acc, phrase) => {
@@ -385,6 +399,7 @@ function parseTemplateInPlace(template) {
 let propsByKey = {};
 
 function renderToString(key, node, result = { html: "", listeners: {} }) {
+  // DEV: this should handle primitive values
   const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
   if (!template.parsedHtmlFragments) {
     parseTemplateInPlace(template);
@@ -476,10 +491,16 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
             propsByKey[childKey] = {
               ...propsByKey[childKey],
-              children: prefixIdentifiers({
+
+              // DEV: pretty sure you need to do away with this?
+              // children: prefixIdentifiers({
+              //   ...children,
+              //   components: node.components,
+              // }),
+              children: {
                 ...children,
                 components: node.components,
-              }),
+              },
             };
           }
 
@@ -658,3 +679,15 @@ const result = renderToString("root", Component);
 const root = document.getElementById("root");
 
 root.innerHTML = result.html;
+
+/*
+
+<script type="module">
+  import { createRoot } from "helix"
+  import * as tree from "./app.js"
+
+  const root = createRoot(document.getElementById("root"), tree)
+  root.render(tree.App)
+</script>
+
+*/
