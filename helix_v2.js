@@ -15,20 +15,6 @@ function isMergeable(phrase) {
   );
 }
 
-// DEV: children will need to be excluded from the cache sometimes?
-// - or the hash calculation will just be a little tricky?
-// - everytime you push a phrase, you should also add to a shared hash?
-// - don't think you're thinking about this quite right
-// - actaully, I think you can calculate the hash when you merge phrases?
-
-// DEV: keys need to be based on where things end up in the dom
-// - your idea that keys should be based on where children were defined was
-//   wrong. In order for rendering to be consistent the key associated with a
-//   slot can't change, and therefore has to be determined by it's position
-
-// DEV: keys are still not working quite right
-// - identifiers
-
 // TODO: There's probably a performance cost to not doing this on the fly
 function mergePhrases(phrases) {
   return phrases.reduce((acc, phrase) => {
@@ -73,10 +59,13 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
     return {
       _isTemplateNode: true,
       assignedkey: key,
+      // DEV: pretty sure object equality can be used instead of a hash for
+      // templates created when parsing component children
       hash: htmlFragments.join("_"),
-      htmlFragments,
       // DEV: this should be called something else
       templateChildren: children.length ? children : defaultChildren,
+      htmlFragments,
+      parsedHtmlFragments: [],
       identifiers: [],
       slots: [],
       attributes: [],
@@ -86,19 +75,11 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
   };
 }
 
-// TODO: one layer of indirection between the actual event listeners and the
-// interpolated functions would allow listeners to be attached before all the JS
-// had loaded
-// - what about serializing event listeners in the dom?
-
 function parseTemplateInPlace(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
   let isComponentTag = false;
   let isAttr = false;
-
-  const result = [];
-  template.parsedHtmlFragments = result;
 
   const templateStack = [template];
 
@@ -263,8 +244,6 @@ function parseTemplateInPlace(template) {
             isOpeningTag &&
             unparsedFragment[controlCharsIndex - 1] !== "/"
           ) {
-            // DEV: you're going to need to compute the hash later
-            // - also, should be able to get rid of the .parent indirection
             templateStack.at(-1).children.push({
               _isTemplateNode: true,
               templateChildren: templateStack.at(-1).templateChildren,
@@ -328,6 +307,7 @@ function parseTemplateInPlace(template) {
       i !== template.htmlFragments.length - 1
     ) {
       // DEV: data structure
+      // - use a Sybmol?
       getIdentifiers().push({});
       pushPhrase({
         type: phraseTypes.IDENTIFIER,
@@ -399,7 +379,7 @@ let propsByKey = {};
 function renderToString(key, node, result = { html: "", listeners: {} }) {
   // DEV: this should handle primitive values
   const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
-  if (!template.parsedHtmlFragments) {
+  if (!template.parsedHtmlFragments.length) {
     parseTemplateInPlace(template);
   }
 
@@ -551,8 +531,6 @@ function Button({ children }) {
   return html`<button onClick=${() => {}}>${children}</button>`;
 }
 
-// DEV: sort of odd that it doesn't matter if you call this or not when you
-// interpolate it?
 function DoesThisWork() {
   return html`<span>this is an interpolated component</span>`;
 }
@@ -647,18 +625,6 @@ Component.components = { ArrayTest, Button, WithChildren };
 const result = renderToString("root", Component);
 
 // DEV: hash all user-provided keys?
-
-// DEV: hmm, looks like you're giving components extra keys?
-// - don't think the root node of the component needs a separate key from the
-//   component itself?
-
-// DEV: there might be a few ways to reduce dom pollution:
-// - you could omit closing keys for array items
-//   - when remounting you could just replace everything up to the next array key
-// - can you omit closing keys entirely?
-// - if a node only has a single parent, could you omit a closing key?
-// - ^^^ for any of these you would want to make sure it was resilient against
-//   the framework user injecting their own dom
 
 const root = document.getElementById("root");
 
