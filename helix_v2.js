@@ -15,7 +15,6 @@ function isMergeable(phrase) {
   );
 }
 
-// TODO: There's probably a performance cost to not doing this on the fly
 function mergePhrases(phrases) {
   return phrases.reduce((acc, phrase) => {
     if (!acc.length) {
@@ -75,6 +74,8 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
   };
 }
 
+// TODO: more work here and in a renderToString to make sure components are
+// passed around properly
 function parseTemplateInPlace(template) {
   let isOpeningTag = false;
   let isClosingTag = false;
@@ -246,6 +247,9 @@ function parseTemplateInPlace(template) {
           ) {
             templateStack.at(-1).children.push({
               _isTemplateNode: true,
+              // interpolatedValues
+              // templateChildren
+              // interpolations
               templateChildren: templateStack.at(-1).templateChildren,
               parsedHtmlFragments: [],
               children: [],
@@ -460,7 +464,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
               ...propsByKey[activeKey],
               children: {
                 ...children,
-                components: node.components,
+                components: children.components || node.components,
               },
             };
           }
@@ -479,61 +483,6 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
 const nodes = {};
 
-function render(node, key) {
-  let template;
-
-  if (node._isTemplateNode) {
-    template = node;
-  } else if (typeof node === "function") {
-    template = node(propsByKey[key] || {});
-  } else {
-    throw new Error("Encountered invalid node", { cause: node });
-  }
-
-  if (!template.parsedHtmlFragments) {
-    parseTemplateInPlace(template);
-  }
-
-  // DEV: what is the proper way to handle slots?
-  if (nodes[key] && nodes[key].hash === template.hash) {
-    // no need to render to string
-    // - handle attributes
-    // - handle slots
-    //   - you may need to recursiveley call render to handle slots?
-    //   - how to properly handle nested slots?
-  } else {
-    // Clear unmounted nodes from the cache
-    if (nodes[key]) {
-      Object.keys(nodes).forEach((item) => {
-        // DEV: you're also going to need to clean up event listeners
-        if (item.startsWith(key)) {
-          delete nodes[item];
-        }
-      });
-    }
-
-    // we need to render to string and update the dom
-  }
-}
-
-function ArrayTest() {
-  return html`
-    ${new Array(3).fill(null).map((_, i) => {
-      return html("key-" + i)`
-        <div style=${"color: blue;"}>index: ${i}</div>
-      `;
-    })}
-  `;
-}
-
-function Button({ children }) {
-  return html`<button onClick=${() => {}}>${children}</button>`;
-}
-
-function DoesThisWork() {
-  return html`<span>this is an interpolated component</span>`;
-}
-
 // DEV: components can't return plain strings?
 // - at least as the app root?
 
@@ -545,20 +494,9 @@ function WithChildren({ children }) {
   `;
 }
 
-WithChildren.components = { Button, WithChildren, ArrayTest };
+WithChildren.components = { WithChildren };
 
-const Component = () => {
-  const nonce = Math.round(Math.random() * 1_000);
-
-  const someUI = html`
-    <div style=${"border: 1px dashed black;"}>this is super cool</div>
-  `;
-
-  const evenStyle = "border: 1px dashed gray; width: fit-content;";
-  const oddStyle = "border: 1px solid black; width: fit-content;";
-
-  const theEnd = "the end";
-
+const App = () => {
   // return html`
   //   <div>
   //     ${new Array(3).fill(null).map(
@@ -567,26 +505,11 @@ const Component = () => {
   //         hello world
   //         <button onClick=${() => {}}>press me</button>
   //       </div>
-  //     `
+  //     `,
   //     )}
   //   </div>
   // `;
 
-  // return html`
-  //   <WithChildren>
-  //     hello world
-  //     <WithChildren>hello again</WithChildren>
-  //   </WithChildren>
-  //   <button>
-  //     <span>${"press me"}</span>
-  //   </button>
-  // `;
-
-  // DEV: not sure that slots are indexed quite right
-  // - also, you need to properly pass components to slots
-  //   - should this happen during parsing?
-  //   - not quite sure how to determine where we should look for components for
-  //     a particular slot
   return html`
     hi there
     <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
@@ -605,38 +528,11 @@ const Component = () => {
       <span>press me</span>
     </button>
   `;
-
-  // return hlx`
-  //   <div data-nonce=${nonce}>
-  //    hello world
-  //   </div>
-  //   <Button>
-  //     ${"press me"}
-  //   </Button>
-  //   <ArrayTest />
-  //   ${DoesThisWork}
-  //   ${someUI}
-  // `;
 };
 
-Component.components = { ArrayTest, Button, WithChildren };
+App.components = { WithChildren };
 
-const result = renderToString("root", Component);
-
-// DEV: hash all user-provided keys?
-
+const result = renderToString("root", App);
 const root = document.getElementById("root");
 
 root.innerHTML = result.html;
-
-/*
-
-<script type="module">
-  import { createRoot } from "helix"
-  import * as tree from "./app.js"
-
-  const root = createRoot(document.getElementById("root"), tree)
-  root.render(tree.App)
-</script>
-
-*/
