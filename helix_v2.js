@@ -34,15 +34,15 @@ function mergePhrases(phrases) {
   }, []);
 }
 
-function html(stringsOrConfig, ...interpolations) {
-  if (Array.isArray(stringsOrConfig)) {
-    const strings = stringsOrConfig;
+function html(htmlStringsOrConfig, ...interpolations) {
+  if (Array.isArray(htmlStringsOrConfig)) {
+    const strings = htmlStringsOrConfig;
     return getTemplateBuilder(undefined, strings, ...interpolations)();
-  } else if (typeof stringsOrConfig === "string") {
-    const key = stringsOrConfig;
+  } else if (typeof htmlStringsOrConfig === "string") {
+    const key = htmlStringsOrConfig;
     return getTemplateBuilder(key);
   } else {
-    const config = stringsOrConfig;
+    const config = htmlStringsOrConfig;
     return getTemplateBuilder(config.key);
   }
 }
@@ -66,8 +66,7 @@ function getTemplateBuilder(key, defaultStrings, ...defaultInterpolations) {
         : defaultInterpolations,
       // DEV: -> htmlStrings
       htmlFragments,
-      // DEV: -> parsedHtmlPhrases
-      parsedHtmlFragments: [],
+      parsedHtmlPhrases: [],
       identifiers: [],
       slots: [],
       attributes: [],
@@ -88,11 +87,11 @@ function parseTemplateInPlace(template) {
   const templateStack = [template];
 
   function prevPhrase() {
-    return templateStack.at(-1).parsedHtmlFragments.at(-1);
+    return templateStack.at(-1).parsedHtmlPhrases.at(-1);
   }
 
   function pushPhrase(phrase) {
-    templateStack.at(-1).parsedHtmlFragments.push(phrase);
+    templateStack.at(-1).parsedHtmlPhrases.push(phrase);
   }
 
   function getIdentifiers() {
@@ -229,8 +228,8 @@ function parseTemplateInPlace(template) {
           });
 
           if (isComponentTag) {
-            templateStack.at(-1).parsedHtmlFragments = mergePhrases(
-              templateStack.at(-1).parsedHtmlFragments,
+            templateStack.at(-1).parsedHtmlPhrases = mergePhrases(
+              templateStack.at(-1).parsedHtmlPhrases,
             );
             templateStack.pop();
           }
@@ -251,7 +250,7 @@ function parseTemplateInPlace(template) {
             templateStack.at(-1).children.push({
               _isTemplateNode: true,
               interpolations: templateStack.at(-1).interpolations,
-              parsedHtmlFragments: [],
+              parsedHtmlPhrases: [],
               children: [],
               identifiers: [],
               attributes: [],
@@ -326,7 +325,7 @@ function parseTemplateInPlace(template) {
         type: "slot",
       });
     } else if (isOpeningTag && !isComponentTag) {
-      const phrases = templateStack.at(-1).parsedHtmlFragments;
+      const phrases = templateStack.at(-1).parsedHtmlPhrases;
       const tagStart = phrases.findLastIndex((phrase) => phrase.tagStart);
 
       if (
@@ -372,7 +371,7 @@ function parseTemplateInPlace(template) {
     }
   });
 
-  template.parsedHtmlFragments = mergePhrases(template.parsedHtmlFragments);
+  template.parsedHtmlPhrases = mergePhrases(template.parsedHtmlPhrases);
 }
 
 let propsByKey = {};
@@ -380,7 +379,7 @@ let propsByKey = {};
 function renderToString(key, node, result = { html: "", listeners: {} }) {
   // DEV: this should handle primitive values
   const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
-  if (!template.parsedHtmlFragments.length) {
+  if (!template.parsedHtmlPhrases.length) {
     parseTemplateInPlace(template);
   }
 
@@ -389,8 +388,8 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
   console.log(JSON.stringify(template, null, 2));
 
-  template.parsedHtmlFragments.forEach((phrase, i) => {
-    const prevPhrase = template.parsedHtmlFragments[i - 1];
+  template.parsedHtmlPhrases.forEach((phrase, i) => {
+    const prevPhrase = template.parsedHtmlPhrases[i - 1];
 
     const activeKey =
       prevPhrase?.type === phraseTypes.IDENTIFIER &&
