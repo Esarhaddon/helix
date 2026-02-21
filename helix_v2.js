@@ -100,7 +100,6 @@ function parseTemplateInPlace(template) {
   const result = [];
   template.parsedHtmlFragments = result;
 
-  let suffix = 0;
   const templateStack = [template];
 
   function prevPhrase() {
@@ -168,12 +167,11 @@ function parseTemplateInPlace(template) {
 
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
             isComponentTag = true;
-            templateStack.at(-1).identifiers.push({ suffix });
+            getIdentifiers().push({});
             pushPhrase({
               type: phraseTypes.IDENTIFIER,
-              index: templateStack.at(-1).identifiers.length - 1,
+              index: getIdentifiers().length - 1,
             });
-            suffix++;
           }
 
           // DEV: this is an odd way of doing things
@@ -288,7 +286,7 @@ function parseTemplateInPlace(template) {
           ) {
             pushPhrase({
               type: phraseTypes.IDENTIFIER,
-              index: templateStack.at(-1).identifiers.length - 1,
+              index: getIdentifiers().length - 1,
             });
           }
 
@@ -329,11 +327,11 @@ function parseTemplateInPlace(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
-      templateStack.at(-1).identifiers.push({ suffix });
-      suffix++;
+      // DEV: data structure
+      getIdentifiers().push({});
       pushPhrase({
         type: phraseTypes.IDENTIFIER,
-        index: templateStack.at(-1).identifiers.length - 1,
+        index: getIdentifiers().length - 1,
       });
 
       templateStack.at(-1).slots.push({
@@ -353,8 +351,8 @@ function parseTemplateInPlace(template) {
         !phrases[tagStart - 1] ||
         phrases[tagStart - 1].type !== phraseTypes.IDENTIFIER
       ) {
-        getIdentifiers().push({ suffix });
-        suffix++;
+        // DEV: data structure
+        getIdentifiers().push({});
         phrases.splice(tagStart, 0, {
           type: phraseTypes.IDENTIFIER,
           index: getIdentifiers().length - 1,
@@ -405,24 +403,25 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
     parseTemplateInPlace(template);
   }
 
+  let suffix = 0;
+  const nextKey = () => key + " " + suffix++;
+
   console.log(JSON.stringify(template, null, 2));
 
   template.parsedHtmlFragments.forEach((phrase, i) => {
     const prevPhrase = template.parsedHtmlFragments[i - 1];
-    const childKey =
+
+    const activeKey =
       prevPhrase?.type === phraseTypes.IDENTIFIER &&
-      `${
-        template.identifiers[prevPhrase.index].prefix || key
-      } ${template.identifiers[prevPhrase.index].suffix.toString(32)}`;
+      template.identifiers[prevPhrase.index].value;
 
     switch (phrase.type) {
       case phraseTypes.IDENTIFIER:
-        const identifier = [
-          template.identifiers[phrase.index].prefix || key,
-          template.identifiers[phrase.index].suffix.toString(32),
-        ].join(" ");
+        const identifier = template.identifiers[phrase.index];
 
-        result.html += `<!-- ${identifier} -->`;
+        // TODO: avoid mutation
+        identifier.value ||= nextKey();
+        result.html += `<!-- ${identifier.value} -->`;
         break;
       case phraseTypes.HTML:
         result.html += phrase.value;
@@ -462,13 +461,13 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           }
 
           value.forEach((item) => {
-            const itemKey = childKey + " " + item.assignedkey;
+            const itemKey = activeKey + " " + item.assignedkey;
             result.html += `<!-- ${itemKey} -->`;
             renderToString(itemKey, item, result);
             result.html += `<!-- ${itemKey} -->`;
           });
         } else if (typeof value === "object" && value._isTemplateNode) {
-          renderToString(childKey, value, result);
+          renderToString(activeKey, value, result);
         }
         break;
       case phraseTypes.COMPONENT:
@@ -480,23 +479,8 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           if ("childrenIndex" in phrase) {
             const children = template.children[phrase.childrenIndex];
 
-            // TODO: might be some extra work to make this work with a cache
-            const prefixIdentifiers = (template) => {
-              template.identifiers.forEach((identifier) => {
-                identifier.prefix = identifier.prefix || key;
-              });
-              template.children.forEach(prefixIdentifiers);
-              return template;
-            };
-
-            propsByKey[childKey] = {
-              ...propsByKey[childKey],
-
-              // DEV: pretty sure you need to do away with this?
-              // children: prefixIdentifiers({
-              //   ...children,
-              //   components: node.components,
-              // }),
+            propsByKey[activeKey] = {
+              ...propsByKey[activeKey],
               children: {
                 ...children,
                 components: node.components,
@@ -504,7 +488,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
             };
           }
 
-          renderToString(childKey, node.components[phrase.tagName], result);
+          renderToString(activeKey, node.components[phrase.tagName], result);
         }
 
         break;
