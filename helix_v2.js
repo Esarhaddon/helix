@@ -34,10 +34,10 @@ function mergePhrases(phrases) {
   }, []);
 }
 
-function html(stringsOrConfig, ...children) {
+function html(stringsOrConfig, ...interpolations) {
   if (Array.isArray(stringsOrConfig)) {
     const strings = stringsOrConfig;
-    return getTemplateBuilder(undefined, strings, ...children)();
+    return getTemplateBuilder(undefined, strings, ...interpolations)();
   } else if (typeof stringsOrConfig === "string") {
     const key = stringsOrConfig;
     return getTemplateBuilder(key);
@@ -47,8 +47,8 @@ function html(stringsOrConfig, ...children) {
   }
 }
 
-function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
-  return (strings, ...children) => {
+function getTemplateBuilder(key, defaultStrings, ...defaultInterpolations) {
+  return (strings, ...interpolations) => {
     const htmlFragments = [...(strings || defaultStrings)];
 
     htmlFragments[0] = htmlFragments[0].trimLeft();
@@ -61,9 +61,12 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
       // NOTE: when determining dom changes object equality can be used instead
       // of a hash for templates created when parsing component children
       hash: htmlFragments.join("_"),
-      // DEV: this should be called something else
-      templateChildren: children.length ? children : defaultChildren,
+      interpolations: interpolations.length
+        ? interpolations
+        : defaultInterpolations,
+      // DEV: -> htmlStrings
       htmlFragments,
+      // DEV: -> parsedHtmlPhrases
       parsedHtmlFragments: [],
       identifiers: [],
       slots: [],
@@ -247,10 +250,7 @@ function parseTemplateInPlace(template) {
           ) {
             templateStack.at(-1).children.push({
               _isTemplateNode: true,
-              // interpolatedValues
-              // templateChildren
-              // interpolations
-              templateChildren: templateStack.at(-1).templateChildren,
+              interpolations: templateStack.at(-1).interpolations,
               parsedHtmlFragments: [],
               children: [],
               identifiers: [],
@@ -410,14 +410,14 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
       case phraseTypes.ATTRIBUTE:
         result.html += `"${
           // TODO: you may need to escape this
-          template.templateChildren[
+          template.interpolations[
             template.attributes[phrase.index].templateChildIndex
           ]
         }"`;
         break;
       case phraseTypes.SLOT: {
         const templateChild =
-          template.templateChildren[
+          template.interpolations[
             template.slots[phrase.index].templateChildIndex
           ];
         const value =
