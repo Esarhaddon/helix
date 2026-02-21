@@ -59,8 +59,8 @@ function getTemplateBuilder(key, defaultStrings, ...defaultChildren) {
     return {
       _isTemplateNode: true,
       assignedkey: key,
-      // DEV: pretty sure object equality can be used instead of a hash for
-      // templates created when parsing component children
+      // NOTE: when determining dom changes object equality can be used instead
+      // of a hash for templates created when parsing component children
       hash: htmlFragments.join("_"),
       // DEV: this should be called something else
       templateChildren: children.length ? children : defaultChildren,
@@ -148,7 +148,7 @@ function parseTemplateInPlace(template) {
 
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 1])) {
             isComponentTag = true;
-            getIdentifiers().push({});
+            getIdentifiers().push(Symbol());
             pushPhrase({
               type: phraseTypes.IDENTIFIER,
               index: getIdentifiers().length - 1,
@@ -306,9 +306,7 @@ function parseTemplateInPlace(template) {
       !isClosingTag &&
       i !== template.htmlFragments.length - 1
     ) {
-      // DEV: data structure
-      // - use a Sybmol?
-      getIdentifiers().push({});
+      getIdentifiers().push(Symbol());
       pushPhrase({
         type: phraseTypes.IDENTIFIER,
         index: getIdentifiers().length - 1,
@@ -331,8 +329,7 @@ function parseTemplateInPlace(template) {
         !phrases[tagStart - 1] ||
         phrases[tagStart - 1].type !== phraseTypes.IDENTIFIER
       ) {
-        // DEV: data structure
-        getIdentifiers().push({});
+        getIdentifiers().push(Symbol());
         phrases.splice(tagStart, 0, {
           type: phraseTypes.IDENTIFIER,
           index: getIdentifiers().length - 1,
@@ -384,7 +381,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
   }
 
   let suffix = 0;
-  const nextKey = () => key + " " + suffix++;
+  const keysByIdentifier = {};
 
   console.log(JSON.stringify(template, null, 2));
 
@@ -393,16 +390,16 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
     const activeKey =
       prevPhrase?.type === phraseTypes.IDENTIFIER &&
-      template.identifiers[prevPhrase.index].value;
+      keysByIdentifier[template.identifiers[prevPhrase.index]];
 
     switch (phrase.type) {
-      case phraseTypes.IDENTIFIER:
+      case phraseTypes.IDENTIFIER: {
         const identifier = template.identifiers[phrase.index];
-
-        // TODO: avoid mutation
-        identifier.value ||= nextKey();
-        result.html += `<!-- ${identifier.value} -->`;
+        const identiferKey = (keysByIdentifier[identifier] ||=
+          key + " " + suffix++);
+        result.html += `<!-- ${identiferKey} -->`;
         break;
+      }
       case phraseTypes.HTML:
         result.html += phrase.value;
         break;
@@ -414,7 +411,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           ]
         }"`;
         break;
-      case phraseTypes.SLOT:
+      case phraseTypes.SLOT: {
         const templateChild =
           template.templateChildren[
             template.slots[phrase.index].templateChildIndex
@@ -450,9 +447,9 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           renderToString(activeKey, value, result);
         }
         break;
+      }
       case phraseTypes.COMPONENT:
         if (
-          // DEV: should probably throw an error if we can't find the component
           phrase.tagName in node.components &&
           typeof node.components[phrase.tagName] === "function"
         ) {
@@ -469,6 +466,8 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
           }
 
           renderToString(activeKey, node.components[phrase.tagName], result);
+        } else {
+          throw new Error(`Component "${phrase.tagName}" not found`);
         }
 
         break;
@@ -488,7 +487,7 @@ function render(node, key) {
   } else if (typeof node === "function") {
     template = node(propsByKey[key] || {});
   } else {
-    throw new Error("[render] Encountered invalid node", { cause: node });
+    throw new Error("Encountered invalid node", { cause: node });
   }
 
   if (!template.parsedHtmlFragments) {
