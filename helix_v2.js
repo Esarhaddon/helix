@@ -481,8 +481,6 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
   return result;
 }
 
-const nodes = {};
-
 // DEV: components can't return plain strings?
 // - at least as the app root?
 
