@@ -172,7 +172,6 @@ function parseTemplateInPlace(template) {
               ),
               isOpeningTag: true,
               value: "",
-              childrenIndex: templateStack.at(-1).children.length - 1,
             });
           }
 
@@ -478,6 +477,10 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 // DEV: components can't return plain strings?
 // - at least as the app root?
 
+function Primitive() {
+  return html`<div>this is a primitive</div>`;
+}
+
 function WithChildren({ children }) {
   return html`
     <br />
@@ -486,7 +489,7 @@ function WithChildren({ children }) {
   `;
 }
 
-WithChildren.components = { WithChildren };
+WithChildren.components = { WithChildren, Primitive };
 
 const App = () => {
   // return html`
@@ -503,6 +506,7 @@ const App = () => {
   // `;
 
   return html`
+    <Primitive />
     hi there
     <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
     <WithChildren>
@@ -522,7 +526,7 @@ const App = () => {
   `;
 };
 
-App.components = { WithChildren };
+App.components = { WithChildren, Primitive };
 
 const result = renderToString("root", App);
 const root = document.getElementById("root");
