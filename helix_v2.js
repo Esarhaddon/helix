@@ -47,25 +47,20 @@ function html(htmlStringsOrConfig, ...interpolations) {
   }
 }
 
-function getTemplateBuilder(key, defaultStrings, ...defaultInterpolations) {
-  return (strings, ...interpolations) => {
-    const htmlFragments = [...(strings || defaultStrings)];
-
-    htmlFragments[0] = htmlFragments[0].trimLeft();
-    htmlFragments[htmlFragments.length - 1] =
-      htmlFragments[htmlFragments.length - 1].trimRight();
+function getTemplateBuilder(key, defaultHtmlStrings, ...defaultInterpolations) {
+  return (htmlStrings, ...interpolations) => {
+    const htmlStringsWithDefaults = [...(htmlStrings || defaultHtmlStrings)];
 
     return {
       _isTemplateNode: true,
       assignedkey: key,
       // NOTE: when determining dom changes object equality can be used instead
       // of a hash for templates created when parsing component children
-      hash: htmlFragments.join("_"),
+      hash: htmlStringsWithDefaults.join("_"),
       interpolations: interpolations.length
         ? interpolations
         : defaultInterpolations,
-      // DEV: -> htmlStrings
-      htmlFragments,
+      htmlStrings: htmlStringsWithDefaults,
       parsedHtmlPhrases: [],
       identifiers: [],
       slots: [],
@@ -98,7 +93,7 @@ function parseTemplateInPlace(template) {
     return templateStack.at(-1).identifiers;
   }
 
-  template.htmlFragments.forEach((fragment, i) => {
+  template.htmlStrings.forEach((fragment, i) => {
     // Add a closing identifier for slots
     if (!isOpeningTag && !isClosingTag && i !== 0) {
       pushPhrase({
@@ -307,7 +302,7 @@ function parseTemplateInPlace(template) {
     if (
       !isOpeningTag &&
       !isClosingTag &&
-      i !== template.htmlFragments.length - 1
+      i !== template.htmlStrings.length - 1
     ) {
       getIdentifiers().push(Symbol());
       pushPhrase({
