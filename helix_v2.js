@@ -57,9 +57,14 @@ function html(htmlStringsOrConfig, ...interpolations) {
   }
 }
 
+// DEV: you broke something
 function getTemplateBuilder(key, defaultHtmlStrings, ...defaultInterpolations) {
   return (htmlStrings, ...interpolations) => {
     const htmlStringsWithDefaults = [...(htmlStrings || defaultHtmlStrings)];
+
+    htmlStringsWithDefaults[0] = htmlStringsWithDefaults[0].trimLeft();
+    htmlStringsWithDefaults[htmlStringsWithDefaults.length - 1] =
+      htmlStringsWithDefaults[htmlStringsWithDefaults.length - 1].trimRight();
 
     return {
       _isTemplateNode: true,
@@ -163,12 +168,11 @@ function parseTemplateInPlace(template) {
             });
           }
 
-          // DEV: this is an odd way of doing things
-          pushPhrase({ type: phraseTypes.HTML, tagStart: true, value: "<" });
-
           if (isComponentTag) {
-            Object.assign(prevPhrase(), {
+            pushPhrase({
               type: phraseTypes.COMPONENT,
+              tagStart: true,
+              value: "<",
               tagName: unparsedFragment.slice(
                 controlCharsIndex + 1,
                 controlCharsIndex +
@@ -183,6 +187,8 @@ function parseTemplateInPlace(template) {
               isOpeningTag: true,
               value: "",
             });
+          } else {
+            pushPhrase({ type: phraseTypes.HTML, tagStart: true, value: "<" });
           }
 
           isOpeningTag = true;
@@ -522,7 +528,6 @@ const App = () => {
   // `;
 
   return html`
-    <Primitive />
     hi there
     <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
     <WithChildren>
