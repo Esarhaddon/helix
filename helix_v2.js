@@ -6,6 +6,16 @@ const phraseTypes = {
   COMPONENT: "component",
 };
 
+function isPrimitive(value) {
+  return (
+    value === undefined ||
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    typeof value === "number"
+  );
+}
+
 function isMergeable(phrase) {
   return (
     phrase &&
@@ -371,8 +381,17 @@ function parseTemplateInPlace(template) {
 let propsByKey = {};
 
 function renderToString(key, node, result = { html: "", listeners: {} }) {
-  // DEV: this should handle primitive values
   const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
+
+  if (isPrimitive(template)) {
+    // TODO: primitives need to be escaped at some point
+    if (typeof template === "string" || typeof template === "number") {
+      result.html += template;
+    }
+
+    return result;
+  }
+
   if (!template.parsedHtmlPhrases.length) {
     parseTemplateInPlace(template);
   }
@@ -474,11 +493,8 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
   return result;
 }
 
-// DEV: components can't return plain strings?
-// - at least as the app root?
-
 function Primitive() {
-  return html`<div>this is a primitive</div>`;
+  return "this is a primitive";
 }
 
 function WithChildren({ children }) {
