@@ -62,9 +62,9 @@ function getTemplateBuilder(key, defaultHtmlStrings, ...defaultInterpolations) {
   return (htmlStrings, ...interpolations) => {
     const htmlStringsWithDefaults = [...(htmlStrings || defaultHtmlStrings)];
 
-    htmlStringsWithDefaults[0] = htmlStringsWithDefaults[0].trimLeft();
-    htmlStringsWithDefaults[htmlStringsWithDefaults.length - 1] =
-      htmlStringsWithDefaults[htmlStringsWithDefaults.length - 1].trimRight();
+    // htmlStringsWithDefaults[0] = htmlStringsWithDefaults[0].trimLeft();
+    // htmlStringsWithDefaults[htmlStringsWithDefaults.length - 1] =
+    //   htmlStringsWithDefaults[htmlStringsWithDefaults.length - 1].trimRight();
 
     return {
       _isTemplateNode: true,
@@ -499,55 +499,15 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
   return result;
 }
 
-function Primitive() {
-  return "this is a primitive";
+function Heading({ children }) {
+  return html`<h1>${children}</h1>`;
 }
-
-function WithChildren({ children }) {
-  return html`
-    <br />
-    children:
-    <div onKeyDown=${() => {}}>${children}</div>
-  `;
-}
-
-WithChildren.components = { WithChildren, Primitive };
 
 const App = () => {
-  // return html`
-  //   <div>
-  //     ${new Array(3).fill(null).map(
-  //       (_, i) => html("my-key-" + i)`
-  //       <div>
-  //         hello world
-  //         <button onClick=${() => {}}>press me</button>
-  //       </div>
-  //     `,
-  //     )}
-  //   </div>
-  // `;
-
-  return html`
-    hi there
-    <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
-    <WithChildren>
-      ${html`<span>
-        this is a slot ${html`<div>and this is a nested slot</div>`}
-      </span>`}
-      hello world
-      <div class=${"my-div"} onMouseMove=${() => {}}>how about here</div>
-      <WithChildren>
-        hello again
-        <WithChildren>it's working!</WithChildren>
-      </WithChildren>
-    </WithChildren>
-    <button onClick=${() => {}}>
-      <span>press me</span>
-    </button>
-  `;
+  return html`<Heading>hello world</Heading>`;
 };
 
-App.components = { WithChildren, Primitive };
+App.components = { Heading };
 
 const result = renderToString("root", App);
 const root = document.getElementById("root");
