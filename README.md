@@ -43,4 +43,4 @@ And in `index.html` add:
 </html>
 ```
 
-Run `npx serve .` and visit your new Helix app at `localhost:3000`.
+Run `npx live-server .` and visit your new Helix app at `localhost:3000`.

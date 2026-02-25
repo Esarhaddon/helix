@@ -57,14 +57,9 @@ function html(htmlStringsOrConfig, ...interpolations) {
   }
 }
 
-// DEV: you broke something
 function getTemplateBuilder(key, defaultHtmlStrings, ...defaultInterpolations) {
   return (htmlStrings, ...interpolations) => {
     const htmlStringsWithDefaults = [...(htmlStrings || defaultHtmlStrings)];
-
-    // htmlStringsWithDefaults[0] = htmlStringsWithDefaults[0].trimLeft();
-    // htmlStringsWithDefaults[htmlStringsWithDefaults.length - 1] =
-    //   htmlStringsWithDefaults[htmlStringsWithDefaults.length - 1].trimRight();
 
     return {
       _isTemplateNode: true,
@@ -405,8 +400,6 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
   let suffix = 0;
   const keysByIdentifier = {};
 
-  console.log(JSON.stringify(template, null, 2));
-
   template.parsedHtmlPhrases.forEach((phrase, i) => {
     const prevPhrase = template.parsedHtmlPhrases[i - 1];
 
@@ -500,7 +493,7 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 }
 
 function Heading({ children }) {
-  return html`<h1>${children}</h1>`;
+  return html`<h1>${children}</h1> `;
 }
 
 const App = () => {

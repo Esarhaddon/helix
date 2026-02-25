@@ -2,16 +2,13 @@
 <html>
   <head>
     <script type="module">
-      import * as v2 from "./helix_v2.js";
+      import { createRoot } from "./helix.js";
+      import * as components from "./app.js";
 
-      /*
-        import { createRoot } from "helix"
-        import * as tree from "./app.js"
-      
-        const root = createRoot(document.getElementById("root"), tree)
-        root.render(tree.App)
-      */
+      const root = createRoot(document.getElementById("root"), components);
+      root.render(components.App);
     </script>
+    <!-- <script type="module" src="./helix_v2.js"></script> -->
   </head>
   <body>
     <div id="root">loading...</div>
