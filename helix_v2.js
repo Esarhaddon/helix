@@ -8,8 +8,8 @@ const phraseTypes = {
 
 function isPrimitive(value) {
   return (
-    value === undefined ||
     value === null ||
+    typeof value === "undefined" ||
     typeof value === "string" ||
     typeof value === "boolean" ||
     typeof value === "number"
@@ -17,12 +17,7 @@ function isPrimitive(value) {
 }
 
 function isMergeable(phrase) {
-  return (
-    phrase &&
-    phrase.type !== phraseTypes.IDENTIFIER &&
-    phrase.type !== phraseTypes.ATTRIBUTE &&
-    phrase.type !== phraseTypes.COMPONENT
-  );
+  return phrase && phrase.type === phraseTypes.HTML;
 }
 
 function mergePhrases(phrases) {
@@ -76,7 +71,7 @@ function getTemplateBuilder(key, defaultHtmlStrings, ...defaultInterpolations) {
       slots: [],
       attributes: [],
       listeners: [],
-      children: [],
+      props: [],
     };
   };
 }
@@ -146,6 +141,7 @@ function parseTemplateInPlace(template) {
           : unparsedFragment[controlCharsIndex];
 
       switch (controlChars) {
+        // Handle tag start
         case "<":
           if (controlCharsIndex !== 0) {
             pushPhrase({
@@ -189,6 +185,7 @@ function parseTemplateInPlace(template) {
           isOpeningTag = true;
 
           break;
+        // Handle non-interpolated attribute start/end
         case '"':
           if (!isComponentTag) {
             pushPhrase({
@@ -196,8 +193,6 @@ function parseTemplateInPlace(template) {
               value: unparsedFragment.slice(0, controlCharsIndex + 1),
             });
           } else if (!isAttr) {
-            // Handle non-interpolated component attributes
-
             const name = unparsedFragment.slice(
               unparsedFragment
                 .slice(0, controlCharsIndex - 1)
@@ -212,13 +207,17 @@ function parseTemplateInPlace(template) {
                 unparsedFragment.slice(controlCharsIndex + 1).indexOf('"'),
             );
 
-            prevPhrase().attrs ||= [];
-            prevPhrase().attrs.push({ name, value });
+            templateStack.at(-1).props.push({
+              identifierIndex: getIdentifiers().length - 1,
+              name,
+              value,
+            });
           }
 
           isAttr = !isAttr;
 
           break;
+        // Handle closing tag start
         case "</":
           if (/[A-Z]/.test(unparsedFragment[controlCharsIndex + 2])) {
             isComponentTag = true;
@@ -242,6 +241,7 @@ function parseTemplateInPlace(template) {
           isClosingTag = true;
 
           break;
+        // Handle tag end
         case ">":
           if (!isComponentTag) {
             pushPhrase({
@@ -252,21 +252,22 @@ function parseTemplateInPlace(template) {
             isOpeningTag &&
             unparsedFragment[controlCharsIndex - 1] !== "/"
           ) {
-            templateStack.at(-1).children.push({
-              _isTemplateNode: true,
-              interpolations: templateStack.at(-1).interpolations,
-              parsedHtmlPhrases: [],
-              children: [],
-              identifiers: [],
-              attributes: [],
-              listeners: [],
-              slots: [],
+            templateStack.at(-1).props.push({
+              identifierIndex: getIdentifiers().length - 1,
+              name: "children",
+              value: {
+                _isTemplateNode: true,
+                interpolations: templateStack.at(-1).interpolations,
+                parsedHtmlPhrases: [],
+                identifiers: [],
+                attributes: [],
+                listeners: [],
+                slots: [],
+                props: [],
+              },
             });
 
-            prevPhrase().childrenIndex =
-              templateStack.at(-1).children.length - 1;
-
-            templateStack.push(templateStack.at(-1).children.at(-1));
+            templateStack.push(templateStack.at(-1).props.at(-1).value);
           } else if (
             isClosingTag ||
             unparsedFragment[controlCharsIndex - 1] === "/"
@@ -293,22 +294,19 @@ function parseTemplateInPlace(template) {
         !unparsedFragment &&
         isComponentTag &&
         isOpeningTag &&
-        prevPhrase().type === phraseTypes.COMPONENT
+        prevPhrase().type === phraseTypes.COMPONENT &&
+        fragment.endsWith("=")
       ) {
-        if (fragment.endsWith(" ")) {
-          prevPhrase().props ||= [];
-          prevPhrase().props.push({ templateChildIndex: i });
-        } else if (fragment.endsWith("=")) {
-          prevPhrase().attrs ||= [];
-          prevPhrase().attrs.push({
-            templateChildIndex: i,
-            name: fragment.slice(fragment.lastIndexOf(" ") + 1, -1),
-          });
-        }
+        templateStack.at(-1).props.push({
+          identifierIndex: getIdentifiers().length - 1,
+          name: fragment.slice(fragment.lastIndexOf(" ") + 1, -1),
+          interpolationIndex: i,
+        });
       }
     }
 
-    // Handle slots, non-component attributes, and inline event listeners
+    // Handle slots, interpolated non-component attributes, and inline event
+    // listeners
     if (
       !isOpeningTag &&
       !isClosingTag &&
@@ -321,7 +319,7 @@ function parseTemplateInPlace(template) {
       });
 
       templateStack.at(-1).slots.push({
-        templateChildIndex: i,
+        interpolationIndex: i,
         identifierIndex: getIdentifiers().length - 1,
       });
       pushPhrase({
@@ -350,21 +348,21 @@ function parseTemplateInPlace(template) {
           .findLastIndex((char) => char === " ") + 1;
       const attrName = prevPhrase().value.slice(attrStart, -1);
 
+      // Strip out inline event listeners so they can be attached later
       if (attrName.startsWith("on")) {
-        // Strip out inline event listeners so they can be attached later
         prevPhrase().value = prevPhrase()
           .value.split("")
           .toSpliced(attrStart, attrName.length + 1)
           .join("");
 
         templateStack.at(-1).listeners.push({
-          templateChildIndex: i,
+          interpolationIndex: i,
           event: attrName.slice(2).toLowerCase(),
           identifierIndex: getIdentifiers().length - 1,
         });
       } else {
         templateStack.at(-1).attributes.push({
-          templateChildIndex: i,
+          interpolationIndex: i,
           identifierIndex: getIdentifiers().length - 1,
         });
         pushPhrase({
@@ -402,89 +400,101 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
 
   template.parsedHtmlPhrases.forEach((phrase, i) => {
     const prevPhrase = template.parsedHtmlPhrases[i - 1];
-
     const activeKey =
       prevPhrase?.type === phraseTypes.IDENTIFIER &&
       keysByIdentifier[template.identifiers[prevPhrase.index]];
 
     switch (phrase.type) {
-      case phraseTypes.IDENTIFIER: {
-        const identifier = template.identifiers[phrase.index];
-        const identiferKey = (keysByIdentifier[identifier] ||=
-          key + " " + suffix++);
-        result.html += `<!-- ${identiferKey} -->`;
+      case phraseTypes.IDENTIFIER:
+        {
+          const identifier = template.identifiers[phrase.index];
+          const identiferKey = (keysByIdentifier[identifier] ||=
+            key + " " + suffix++);
+          result.html += `<!-- ${identiferKey} -->`;
+        }
         break;
-      }
       case phraseTypes.HTML:
         result.html += phrase.value;
         break;
       case phraseTypes.ATTRIBUTE:
-        result.html += `"${
-          // TODO: you may need to escape this
-          template.interpolations[
-            template.attributes[phrase.index].templateChildIndex
-          ]
-        }"`;
-        break;
-      case phraseTypes.SLOT: {
-        const templateChild =
-          template.interpolations[
-            template.slots[phrase.index].templateChildIndex
-          ];
-        const value =
-          typeof templateChild === "function" ? templateChild() : templateChild;
-
-        if (typeof value === "number" || typeof value === "string") {
-          // TODO: you also need to escape this
-          result.html += value;
-        } else if (typeof value === undefined || typeof value === null) {
-          break;
-        } else if (Array.isArray(value)) {
-          if (!value.every((item) => item._isTemplateNode)) {
-            throw new Error(
-              "Each element in an array must be wrapped in html(key)`...`",
-            );
-          }
-
-          if (!value.every((item) => item.assignedkey)) {
-            throw new Error(
-              "Each element in an array must have a key. Pass one like this: html(key)`...`",
-            );
-          }
-
-          value.forEach((item) => {
-            const itemKey = activeKey + " " + item.assignedkey;
-            result.html += `<!-- ${itemKey} -->`;
-            renderToString(itemKey, item, result);
-            result.html += `<!-- ${itemKey} -->`;
-          });
-        } else if (typeof value === "object" && value._isTemplateNode) {
-          renderToString(activeKey, value, result);
+        {
+          const attribute = template.attributes[phrase.index];
+          result.html += `"${
+            // TODO: you may need to escape this
+            template.interpolations[attribute.interpolationIndex]
+          }"`;
         }
         break;
-      }
+      case phraseTypes.SLOT:
+        {
+          const interpolation =
+            template.interpolations[
+              template.slots[phrase.index].interpolationIndex
+            ];
+          const value =
+            typeof interpolation === "function"
+              ? interpolation()
+              : interpolation;
+
+          if (typeof value === "number" || typeof value === "string") {
+            // TODO: you also need to escape this
+            result.html += value;
+          } else if (typeof value === undefined || typeof value === null) {
+            break;
+          } else if (Array.isArray(value)) {
+            if (!value.every((item) => item._isTemplateNode)) {
+              throw new Error(
+                "Each element in an array must be wrapped in html(key)`...`",
+              );
+            }
+
+            if (!value.every((item) => item.assignedkey)) {
+              throw new Error(
+                "Each element in an array must have a key. Pass one like this: html(key)`...`",
+              );
+            }
+
+            value.forEach((item) => {
+              const itemKey = activeKey + " " + item.assignedkey;
+              result.html += `<!-- ${itemKey} -->`;
+              renderToString(itemKey, item, result);
+              result.html += `<!-- ${itemKey} -->`;
+            });
+          } else if (typeof value === "object" && value._isTemplateNode) {
+            renderToString(activeKey, value, result);
+          }
+        }
+        break;
       case phraseTypes.COMPONENT:
         if (
           phrase.tagName in node.components &&
           typeof node.components[phrase.tagName] === "function"
         ) {
-          if ("childrenIndex" in phrase) {
-            const children = template.children[phrase.childrenIndex];
-
-            propsByKey[activeKey] = {
-              ...propsByKey[activeKey],
-              children: {
-                ...children,
-                components: children.components || node.components,
-              },
-            };
-          }
+          propsByKey[activeKey] = Object.fromEntries(
+            template.props.flatMap((prop) =>
+              template.identifiers[prop.identifierIndex] ===
+              template.identifiers[prevPhrase.index]
+                ? [
+                    [
+                      prop.name,
+                      prop.name === "children"
+                        ? {
+                            ...prop.value,
+                            components:
+                              prop.value.components || node.components,
+                          }
+                        : prop.value ||
+                          template.interpolations[prop.interpolationIndex],
+                    ],
+                  ]
+                : [],
+            ),
+          );
 
           renderToString(activeKey, node.components[phrase.tagName], result);
         } else {
           throw new Error(`Component "${phrase.tagName}" not found`);
         }
-
         break;
     }
   });
@@ -492,15 +502,51 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
   return result;
 }
 
+function WithChildren({ children }) {
+  return html`
+    <br />
+    children:
+    <div onKeyDown=${() => {}}>${children}</div>
+  `;
+}
+
+function OtherPropsTest({ id, class: className, children }) {
+  return html`<div id=${id} class=${className}>${children}</div> `;
+}
+
+WithChildren.components = { WithChildren, OtherPropsTest };
+
 function Heading({ children }) {
   return html`<h1>${children}</h1> `;
 }
 
 const App = () => {
-  return html`<Heading>hello world</Heading>`;
+  // return html`<Heading>hello world</Heading>`;
+
+  return html`
+    hi there
+    <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
+    <OtherPropsTest id="my-test-component" class="h-small w-medium">
+      pretty sure this is working
+    </OtherPropsTest>
+    <WithChildren>
+      ${html`<span>
+        this is a slot ${html`<div>and this is a nested slot</div>`}
+      </span>`}
+      hello world
+      <div class=${"my-div"} onMouseMove=${() => {}}>how about here</div>
+      <WithChildren>
+        hello again
+        <WithChildren>it's working!</WithChildren>
+      </WithChildren>
+    </WithChildren>
+    <button onClick=${() => {}}>
+      <span>press me</span>
+    </button>
+  `;
 };
 
-App.components = { Heading };
+App.components = { Heading, WithChildren, OtherPropsTest };
 
 const result = renderToString("root", App);
 const root = document.getElementById("root");
