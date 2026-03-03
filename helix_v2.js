@@ -130,7 +130,6 @@ function parseTemplateInPlace(template) {
 
       if (controlCharsIndex < 0 && !isComponentTag) {
         pushPhrase({ type: phraseTypes.HTML, value: unparsedFragment });
-
         break;
       }
 
@@ -183,7 +182,6 @@ function parseTemplateInPlace(template) {
           }
 
           isOpeningTag = true;
-
           break;
         // Handle non-interpolated attribute start/end
         case '"':
@@ -215,7 +213,6 @@ function parseTemplateInPlace(template) {
           }
 
           isAttr = !isAttr;
-
           break;
         // Handle closing tag start
         case "</":
@@ -239,7 +236,6 @@ function parseTemplateInPlace(template) {
           }
 
           isClosingTag = true;
-
           break;
         // Handle tag end
         case ">":
@@ -281,7 +277,6 @@ function parseTemplateInPlace(template) {
           isClosingTag = false;
           isOpeningTag = false;
           isComponentTag = false;
-
           break;
       }
 
@@ -379,7 +374,7 @@ function parseTemplateInPlace(template) {
 
 let propsByKey = {};
 
-function renderToString(key, node, result = { html: "", listeners: {} }) {
+function renderToString(key, node, result = { html: "", listenersByKey: {} }) {
   const template = node._isTemplateNode ? node : node(propsByKey[key] || {});
 
   if (isPrimitive(template)) {
@@ -499,14 +494,44 @@ function renderToString(key, node, result = { html: "", listeners: {} }) {
     }
   });
 
+  // Keep track of listeners so they can be attached after the dom is updated
+  template.listeners.forEach((listener) => {
+    const identifier = template.identifiers[listener.identifierIndex];
+    const key = keysByIdentifier[identifier];
+
+    result.listenersByKey[key.toLowerCase()] ||= [];
+    result.listenersByKey[key.toLowerCase()].push({
+      event: listener.event,
+      handler: template.interpolations[listener.interpolationIndex],
+    });
+  });
+
   return result;
+}
+
+const elementsByKey = {};
+
+function hydrate({ listenersByKey }) {
+  Object.entries(listenersByKey).forEach(([key, handlers]) => {
+    handlers.forEach(({ event, handler }) => {
+      const element = (elementsByKey[key] ||= document.evaluate(
+        `//comment()[contains(string(), " ${key} ")]`,
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+      ).singleNodeValue?.nextSibling);
+
+      // TODO: remove these in the cleanup phase
+      element.addEventListener(event, handler);
+    });
+  });
 }
 
 function WithChildren({ children }) {
   return html`
     <br />
     children:
-    <div onKeyDown=${() => {}}>${children}</div>
+    <div>${children}</div>
   `;
 }
 
@@ -523,9 +548,19 @@ function Heading({ children }) {
 const App = () => {
   // return html`<Heading>hello world</Heading>`;
 
+  const clickable = "cursor: pointer;";
+
   return html`
     hi there
-    <div id=${"attr-value"} onClick=${() => {}}>attr test</div>
+    <div
+      id=${"attr-value"}
+      style=${clickable}
+      onClick=${() => {
+        console.log("hello world");
+      }}
+    >
+      attr test
+    </div>
     <OtherPropsTest id="my-test-component" class="h-small w-medium">
       pretty sure this is working
     </OtherPropsTest>
@@ -540,7 +575,11 @@ const App = () => {
         <WithChildren>it's working!</WithChildren>
       </WithChildren>
     </WithChildren>
-    <button onClick=${() => {}}>
+    <button
+      onClick=${() => {
+        console.log("click!");
+      }}
+    >
       <span>press me</span>
     </button>
   `;
@@ -552,3 +591,4 @@ const result = renderToString("root", App);
 const root = document.getElementById("root");
 
 root.innerHTML = result.html;
+hydrate(result);
