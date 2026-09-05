@@ -1274,6 +1274,69 @@ function shouldDoDeepUpdate(prevValue, currentValue) {
 
 let plannedRenders = 0;
 
+// DEV
+// - "enumerated access" should only apply to access that enumerates every
+// single item in a list
+//   - in this case subscribers should only be notified if the list length
+//   changes
+//   - the signal prop resolution logic should prevent child components from
+//   seeing stale values
+//   - probably can treat access to length in a similar way?
+//   - push, pop, splice if it changes length, delete, setting an object,
+//   property that wasn't present before should trigger subscribers
+// - handle primitive values how you currently are
+//   - is it really that simple?
+//   - might actually be that simple
+//   - can you impliment this today?
+//   - object truthiness counts as a primitive
+// - enumerating object methods:
+//   - has trap, ownKeys trap
+// - enumerating array methods
+//   - all non-mutating array methods
+//     - splice and toSpliced are special in that they should only be notified
+//     if the length of their return value changes
+//     - actually, this should be true of all enumerated access
+//   - for the initial implementation, you can probably treat all array methods
+//   as enumerating
+
+const new_access = {};
+
+// DEV: explain
+const ENUMERATED_KEYS = Symbol();
+
+function new_subscribe(signalId, path, property, slice) {
+  const { key, type } = renderStack.at(-1) || {};
+
+  if (key && type !== "peek") {
+    // DEV: is an undefined target possible?
+    const target = peek(signals.get(signalId).rawValue, path);
+    // DEV: not quite right
+    const subscriptions = new_access[key][signalId][path];
+
+    if (property === ENUMERATED_KEYS) {
+      subscriptions[property] = { value: Object.keys(target).length };
+      return;
+    }
+
+    const value = target[property];
+    if (!isPrimitive(value)) {
+      // DEV: is it really this simple?
+      return;
+    }
+
+    if (Array.isArray(target) && property === "length") {
+      subscriptions[property] = {
+        value: slice ? target.slice(slice.start, slice.end).length : value,
+        slice,
+      };
+
+      return;
+    }
+
+    subscriptions[property] = { value };
+  }
+}
+
 function notifySubscribers(signalId, path, prop, value) {
   const { prevValues } = signals.get(signalId);
   const plannedUpdatesByKey = {};
@@ -1546,6 +1609,13 @@ export function signal(initialValue) {
 
 const deferredTasks = [];
 const taskCallbacksByKey = {};
+
+// DEV: The prop resolution logic is important for tasks?
+// - Will you need to extend it?
+// - Otherwise, will there be issues if a task references a signal object
+// directly and not via something.object?
+// - this might only matter for arrays?
+// - what about unattached objects?
 
 // TODO: Allow returning a cleanup function
 export function task(callback) {
