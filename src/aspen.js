@@ -1299,42 +1299,73 @@ let plannedRenders = 0;
 //   - for the initial implementation, you can probably treat all array methods
 //   as enumerating
 
-const new_access = {};
+const subscribersByKey = {};
 
 // DEV: explain
 const ENUMERATED_KEYS = Symbol();
+// const SLICE = Symbol();
 
 function new_subscribe(signalId, path, property, slice) {
   const { key, type } = renderStack.at(-1) || {};
 
-  if (key && type !== "peek") {
-    // DEV: is an undefined target possible?
-    const target = peek(signals.get(signalId).rawValue, path);
-    // DEV: not quite right
-    const subscriptions = new_access[key][signalId][path];
-
-    if (property === ENUMERATED_KEYS) {
-      subscriptions[property] = { value: Object.keys(target).length };
-      return;
-    }
-
-    const value = target[property];
-    if (!isPrimitive(value)) {
-      // DEV: is it really this simple?
-      return;
-    }
-
-    if (Array.isArray(target) && property === "length") {
-      subscriptions[property] = {
-        value: slice ? target.slice(slice.start, slice.end).length : value,
-        slice,
-      };
-
-      return;
-    }
-
-    subscriptions[property] = { value };
+  if (!key || type === "peek") {
+    return;
   }
+
+  const target = peek(signals.get(signalId).rawValue, path);
+  const value =
+    property === ENUMERATED_KEYS
+      ? slice
+        ? target.slice(slice.start, slice.end).length
+        : Object.keys(target).length
+      : target[property];
+
+  if (isPrimitive(value)) {
+    subscribersByKey[key] ||= { subscriptions: {} };
+    subscribersByKey[key].subscriber = renderStack.at(-1);
+    subscribersByKey[key].subscriptions[signalId] ||= {};
+    subscribersByKey[key].subscriptions[signalId][path] ||= {};
+    subscribersByKey[key].subscriptions[signalId][path][property] = slice
+      ? { value, slice }
+      : { value };
+  } else {
+    // DEV: need to create subscriptions for truthiness changes
+  }
+}
+
+function new_notifySubscribers(signalId, path, property) {
+  const plannedUpdatesByKey = {};
+
+  // DEV: lots to explain here
+  [
+    ...Object.getOwnPropertySymbols(subscribersByKey),
+    ...Object.keys(subscribersByKey),
+  ].forEach((key) => {
+    if (key in plannedUpdatesByKey) {
+      return;
+    }
+
+    const subscription =
+      subscribersByKey?.[key].subscriptions?.[signalId]?.[path][property];
+
+    if (subscription) {
+      const target = peek(signals.get(signalId).rawValue, path);
+
+      const currentValue =
+        property === ENUMERATED_KEYS
+          ? subscription.slice
+            ? target.slice(subscription.slice.start, subscription.slice.end)
+                .length
+            : Object.keys(target).length
+          : target[property];
+
+      if (currentValue !== subscription.value) {
+        plannedUpdatesByKey[key] = subscription.subscriber;
+      }
+    }
+  });
+
+  // DEV: track planned renders, do the updates
 }
 
 function notifySubscribers(signalId, path, prop, value) {
