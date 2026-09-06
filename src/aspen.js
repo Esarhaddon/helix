@@ -1333,8 +1333,15 @@ function new_subscribe(signalId, path, property, slice) {
   }
 }
 
+// DEV: you want all the updates to happen in a single pass, so this might not
+// be quite right
 function new_notifySubscribers(signalId, path, property) {
   const plannedUpdatesByKey = {};
+
+  // DEV: ENUMERATED_KEYS and .length (for arrays) should be treated the same
+
+  // DEV: if path is just a string, you should handle any enumerated ky
+  // subscriptions as well
 
   // DEV: lots to explain here
   [
