@@ -1352,12 +1352,31 @@ function new_notifySubscribers(signalId, path, property) {
       return;
     }
 
-    const subscription =
-      subscribersByKey?.[key].subscriptions?.[signalId]?.[path][property];
+    const target = peek(signals.get(signalId).rawValue, path);
+    const subscriptions =
+      subscribersByKey?.[key]?.subscriptions?.[signalId]?.[path];
 
+    if (!subscriptions) {
+      return;
+    }
+
+    // DEV: explain
+    if (
+      property !== ENUMERATED_KEYS &&
+      !Array.isArray(target) &&
+      subscriptions[ENUMERATED_KEYS]
+    ) {
+      const subscription = subscriptions[ENUMERATED_KEYS];
+
+      if (subscription.value !== Object.keys(target).length) {
+        plannedUpdatesByKey[key] = subscription.subscriber;
+      }
+
+      return;
+    }
+
+    const subscription = subscriptions?.[property];
     if (subscription) {
-      const target = peek(signals.get(signalId).rawValue, path);
-
       const currentValue =
         property === ENUMERATED_KEYS
           ? subscription.slice
