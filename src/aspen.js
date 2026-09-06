@@ -1333,6 +1333,10 @@ function new_subscribe(signalId, path, property, slice) {
   }
 }
 
+// DEV: you forgot about handling nested paths when an object is set
+// - for better use of memory you should store prev values in one spot
+// - maybe don't worry about that for now
+
 // DEV: you want all the updates to happen in a single pass, so this might not
 // be quite right
 function new_notifySubscribers(signalId, path, property) {
