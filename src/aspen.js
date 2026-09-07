@@ -1305,6 +1305,13 @@ const subscribersByKey = {};
 const ENUMERATED_KEYS = Symbol();
 // const SLICE = Symbol();
 
+// DEV: probably safe to assume that subscribe will always be called before
+// notify?
+
+// DEV: this seems like a good place for a WeakSet?
+
+// DEV: path, property, args?
+
 function new_subscribe(signalId, path, property, slice) {
   const { key, type } = renderStack.at(-1) || {};
 
@@ -1333,6 +1340,100 @@ function new_subscribe(signalId, path, property, slice) {
   }
 }
 
+// DEV: access should be tracked by object key and be reset before each render
+
+/**
+ *
+ * ACCESS
+ *
+ * - a primitive object property or array item is accessed
+ * - a non-primitive object property or array item is accessed
+ * - an object's or array's keys are listed
+ * - an array's length is accessed
+ * - a slice of an array is accessed (only the length of the slice is relevant)
+ *
+ * UPDATE
+ *
+ * - a primitive object property or array item is changed to a different primitive
+ * - "" to a non-primitive
+ * - a non-primitive object property or array item is set to a different non-primitive
+ * - "" to a primitive (including null or undefined)
+ *
+ */
+
+// DEV: the path unreachable case might not be something you have to handle
+// separately from primitive vs non-primitive
+
+/*
+
+type Subscription = {
+  type: "primitive",
+  value: string | number | symbol | null | undefined
+} | {
+  type: "object",
+  size: number,
+} | {
+  type: "array",
+  length: number,
+  slice?: { start: number, end: number }
+}
+
+ */
+
+// DEV: do you even need the enumerated key symbol?
+
+const new_subscriptionsByKey = {};
+
+// DEV: you might need an object arg here as well
+function new1_subscribe(signalId, path, slice) {
+  const { key, type } = renderStack.at(-1) || {};
+
+  if (!key || type === "peek") {
+    return;
+  }
+
+  const value = peek(signals.get(signalId).rawValue, path);
+
+  // DEV: you might be on to something here, but this is not quite right since
+  // accessing an object or array shouldn't always create a size or length
+  // subscription
+  let subscription;
+  if (isPrimitive(value)) {
+    subscription = {
+      subscriber: renderStack.at(-1),
+      // DEV: is there a word that would encompass object truthiness?
+      type: "primitive",
+      value,
+    };
+  } else if (Array.isArray(value)) {
+    subscription = {
+      subscriber: renderStack.at(-1),
+      type: "array",
+      length: slice ? value.slice(slice.start, slice.end).length : value.length,
+      slice,
+    };
+  } else {
+    subscription = {
+      subscriber: renderStack.at(-1),
+      type: "object",
+      size: Object.keys(value).length,
+    };
+  }
+
+  // TODO: Not an efficient data structure
+  subscribersByKey[key] ||= {};
+  subscribersByKey[key][signalId] ||= {};
+  subscribersByKey[key][signalId][path] = subscription;
+}
+
+// DEV: for a scenario like $myArray.val.slice(0, 3)
+// - this should get called with $myArray[SignalIdProperty], [root].val, {start: 0, end: 3}
+// - no, that's not right
+// - slice doesn't need to be an arg
+function new1_notifySubscribers(signalId, path, slice) {
+  // DEV:
+}
+
 // DEV: you forgot about handling nested paths when an object is set
 // - for better use of memory you should store prev values in one spot
 // - maybe don't worry about that for now
@@ -1359,6 +1460,11 @@ function new_notifySubscribers(signalId, path, property) {
     const target = peek(signals.get(signalId).rawValue, path);
     const subscriptions =
       subscribersByKey?.[key]?.subscriptions?.[signalId]?.[path];
+
+    // DEV: for each key this should just look at all the subscriptions where
+    // the subscription path starts with the target path + the property
+    // - in the case where target is an object you'll also need to run the
+    // check for ENUMERATED_KEYS on the target
 
     if (!subscriptions) {
       return;
