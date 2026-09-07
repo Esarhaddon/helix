@@ -1385,6 +1385,8 @@ type Subscription = {
 const new_subscriptionsByKey = {};
 
 // DEV: you might need an object arg here as well
+// - this should determine the the type of the subscription, you can switch on it below
+// - equality, existence, length (w/ or w/o slice), size
 function new1_subscribe(signalId, path, slice) {
   const { key, type } = renderStack.at(-1) || {};
 
