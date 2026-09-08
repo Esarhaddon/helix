@@ -1381,13 +1381,9 @@ type Subscription = {
  */
 
 // DEV: do you even need the enumerated key symbol?
+// - don't think so
 
-const new_subscriptionsByKey = {};
-
-// DEV: you might need an object arg here as well
-// - this should determine the the type of the subscription, you can switch on it below
-// - equality, existence, length (w/ or w/o slice), size
-function new1_subscribe(signalId, path, slice) {
+function createSubscription(signalId, path, options) {
   const { key, type } = renderStack.at(-1) || {};
 
   if (!key || type === "peek") {
@@ -1395,34 +1391,48 @@ function new1_subscribe(signalId, path, slice) {
   }
 
   const value = peek(signals.get(signalId).rawValue, path);
-
-  // DEV: you might be on to something here, but this is not quite right since
-  // accessing an object or array shouldn't always create a size or length
-  // subscription
   let subscription;
+
   if (isPrimitive(value)) {
     subscription = {
       subscriber: renderStack.at(-1),
-      // DEV: is there a word that would encompass object truthiness?
-      type: "primitive",
+      type: "equality",
       value,
     };
   } else if (Array.isArray(value)) {
-    subscription = {
-      subscriber: renderStack.at(-1),
-      type: "array",
-      length: slice ? value.slice(slice.start, slice.end).length : value.length,
-      slice,
-    };
+    if (options?.enumerated) {
+      subscription = {
+        subscriber: renderStack.at(-1),
+        type: "length",
+        value: options?.slice
+          ? value.slice(options.slice.start, options.slice.end).length
+          : value.length,
+        slice: options.slice,
+      };
+    } else {
+      subscription = {
+        subscriber: renderStack.at(-1),
+        type: "existence",
+        value: true,
+      };
+    }
   } else {
-    subscription = {
-      subscriber: renderStack.at(-1),
-      type: "object",
-      size: Object.keys(value).length,
-    };
+    if (options?.enumerated) {
+      subscription = {
+        subscriber: renderStack.at(-1),
+        type: "size",
+        value: Object.keys(value).length,
+      };
+    } else {
+      subscription = {
+        subscriber: renderStack.at(-1),
+        type: "existence",
+        value: true,
+      };
+    }
   }
 
-  // TODO: Not an efficient data structure
+  // TODO: Not efficient data structures
   subscribersByKey[key] ||= {};
   subscribersByKey[key][signalId] ||= {};
   subscribersByKey[key][signalId][path] = subscription;
